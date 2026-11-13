@@ -13,5 +13,6 @@ orchestration, task store and API, web task list), a git worktree and pull
 request per task, scheduled runs, a per-person task assistant, workspace
 users for shared hubs, and related fixes across the CLI, hub and web
 packages. dugong ships the web app (a PWA) only; HAPI's native iOS and
-Android apps are removed. The full list of changes is the git history after
-the fork point; docs/divergence.md summarizes it.
+Android apps are removed. docs/divergence.md summarizes these changes. Independent dugong contribution
+history begins with the 0.30.0 release snapshot; earlier upstream and
+development history is not included in this repository's active history.
