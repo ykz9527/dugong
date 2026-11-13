@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>dugong · task assistant demo</title>
+        <style>
+            html, body, #root { height: 100%; margin: 0 }
+        </style>
+    </head>
+    <body>
+        <div id="root"></div>
+        <script>
+            // ?lang=en for the English interface and data; Chinese otherwise.
+            const english = new URLSearchParams(location.search).get('lang') === 'en'
+            document.documentElement.lang = english ? 'en' : 'zh-CN'
+            localStorage.setItem('hapi-lang', english ? 'en' : 'zh-CN')
+            // ?theme=dark (or oled) for the dark appearance; light otherwise.
+            const theme = new URLSearchParams(location.search).get('theme')
+            const appearance = theme === 'dark' || theme === 'oled' ? theme : 'light'
+            localStorage.setItem('hapi-appearance', appearance)
+            // The app sets this from its root; the demo has no app root.
+            document.documentElement.setAttribute('data-theme', appearance)
+            localStorage.setItem('hapi.workspaceUser.v1.activeId', 'wu-kai')
+            for (const fue of ['rich-composer-mentions', 'scratchlist-toggle', 'task-assistant']) {
+                localStorage.setItem('hapi.fue.v1.' + fue, '1')
+            }
+            // Every load starts with nothing marked as seen in the Memory tab.
+            localStorage.removeItem('hapi.assistant.v1.memorySeenAt.wu-kai')
+        </script>
+        <script type="module" src="./assistant-panel-demo.tsx"></script>
+    </body>
+</html>

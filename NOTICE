@@ -1,0 +1,17 @@
+dugong
+Copyright (C) 2025-2026 Kai Yu and dugong contributors
+
+dugong is a modified version of HAPI (https://github.com/tiann/hapi),
+Copyright (C) 2025-2026 weishu and HAPI contributors.
+
+HAPI is licensed under the GNU Affero General Public License v3.0, and so
+is dugong. See LICENSE for the full text.
+
+Changes relative to HAPI, starting 2026-08: a task list whose tasks move
+through their states on their own as their agents work (hub task
+orchestration, task store and API, web task list), a git worktree and pull
+request per task, scheduled runs, a per-person task assistant, workspace
+users for shared hubs, and related fixes across the CLI, hub and web
+packages. dugong ships the web app (a PWA) only; HAPI's native iOS and
+Android apps are removed. The full list of changes is the git history after
+the fork point; docs/divergence.md summarizes it.

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="dugong">
+  <path d="M 10 68 C 8 58, 14 50, 24 46 C 36 41, 54 38, 70 40 C 84 42, 96 48, 104 54 C 110 50, 117 46, 125 45 C 121 51, 117 56, 113 60 C 117 64, 121 69, 125 76 C 117 74, 110 70, 104 66 C 94 78, 78 87, 58 88 C 44 89, 34 87, 28 83 C 26 89, 20 93, 14 92 C 8 90, 7 80, 10 68 Z" fill="#f5f5f5"/>
+  <path d="M 44 85 C 46 93, 50 99, 58 102 C 59 95, 56 89, 52 85 Z" fill="#f5f5f5"/>
+  <circle cx="23" cy="58" r="2.8" fill="#0b0b0b"/>
+  <rect x="40" y="52" width="48" height="8" rx="4" fill="#0b0b0b"/>
+  <rect x="40" y="64" width="36" height="8" rx="4" fill="#d12a1e"/>
+  <rect x="40" y="76" width="24" height="8" rx="4" fill="#0b0b0b"/>
+</svg>

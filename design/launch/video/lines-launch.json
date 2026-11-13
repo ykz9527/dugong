@@ -1,0 +1,130 @@
+{
+    "voice": "en-US-AndrewNeural",
+    "rate": "+4%",
+    "lines": [
+        {
+            "id": "terminals",
+            "text": "If you run a few coding agents at once, you know this: flipping between terminals to see which one finished, and which one is waiting for you to type y.",
+            "zh": [
+                "同时跑过几个编码 agent 的人，应该都干过这种事：",
+                "在几个终端之间来回切，看哪个跑完了，哪个在等你按 y。"
+            ]
+        },
+        {
+            "id": "list",
+            "text": "dugong puts each agent's work in one task list, and every row updates itself.",
+            "zh": [
+                "dugong 把每个 agent 的活放进一张任务清单，每一行的状态都会自己更新。"
+            ]
+        },
+        {
+            "id": "new",
+            "text": "You write the task, pick a folder and an agent, and press Start.",
+            "zh": [
+                "写好任务，选目录、选 agent，点开始。"
+            ]
+        },
+        {
+            "id": "review",
+            "text": "When the agent finishes a turn, the task moves to Review and turns red.",
+            "zh": [
+                "agent 跑完一轮，任务就跳到 Review，变成红色。"
+            ]
+        },
+        {
+            "id": "red",
+            "text": "Red means it needs you. Everything else can wait.",
+            "zh": [
+                "红色表示需要你处理。",
+                "其余的可以先不管。"
+            ]
+        },
+        {
+            "id": "assistant",
+            "text": "On the right is the assistant. Everyone gets one, and it can see the task you have open.",
+            "zh": [
+                "右边是助手。",
+                "每个人都有一个，它能看到你打开的任务。"
+            ]
+        },
+        {
+            "id": "reads",
+            "text": "It reads the task and its own notes. Here it remembers a rule from earlier: check for live sessions before restarting the runner. And it spots that the tests miss the handoff path.",
+            "zh": [
+                "它会看任务记录，也会翻自己记下的东西。",
+                "这里它想起之前记下的一条规矩：",
+                "重启 runner 之前，先看有没有活跃的会话。",
+                "它还发现，测试漏了交接这条路径。"
+            ]
+        },
+        {
+            "id": "tell",
+            "text": "Tell it to add the test, and that runner changes always need one. It saves the rule, then messages the task. Anything that touches another task asks you first.",
+            "zh": [
+                "让它补测试，再告诉它以后改 runner 都要补。",
+                "它把这条规矩存下来，再去给那个任务发消息。",
+                "凡是要动别的任务，都会先问你。"
+            ]
+        },
+        {
+            "id": "memory",
+            "text": "Everything it remembers is listed here. You can edit any note, or undo its changes.",
+            "zh": [
+                "它记住的东西都列在这里。",
+                "每一条都能改，它改过的也能撤销。"
+            ]
+        },
+        {
+            "id": "questions",
+            "text": "When it isn't sure, it doesn't stop and wait. It picks an option, writes down why and how to undo it, and you look when you have time.",
+            "zh": [
+                "它拿不准的时候，不会停下来等你。",
+                "它先选一个，写下为什么、选错了怎么退回去，你有空再看。"
+            ]
+        },
+        {
+            "id": "laptop",
+            "text": "So you can close the laptop.",
+            "zh": [
+                "所以你可以把电脑合上。"
+            ]
+        },
+        {
+            "id": "phone",
+            "text": "When an agent needs permission, your phone gets a notification. Tap Allow, and it keeps going.",
+            "zh": [
+                "agent 需要你批准时，手机会收到通知。",
+                "点 Allow，它就接着跑。"
+            ]
+        },
+        {
+            "id": "phonelist",
+            "text": "The phone has the same task list, and the same assistant.",
+            "zh": [
+                "手机上是同一张任务清单，同一个助手。"
+            ]
+        },
+        {
+            "id": "schedule",
+            "text": "Tasks can run on a schedule.",
+            "zh": [
+                "任务还能定时跑。"
+            ]
+        },
+        {
+            "id": "adopt",
+            "text": "And a conversation you already started in the terminal can be picked up as a task.",
+            "zh": [
+                "你在终端里已经开始的对话，也能接过来变成一个任务。"
+            ]
+        },
+        {
+            "id": "end",
+            "text": "dugong is open source, and runs on your own machine. It works with Claude Code, Codex, Cursor, and seven more agents.",
+            "zh": [
+                "dugong 是开源的，跑在你自己的机器上。",
+                "支持 Claude Code、Codex、Cursor 等十种 agent。"
+            ]
+        }
+    ]
+}

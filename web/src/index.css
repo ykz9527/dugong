@@ -1,0 +1,1038 @@
+@import "tailwindcss";
+@import "katex/dist/katex.min.css";
+@config "../tailwind.config.ts";
+
+/*
+ * dugong design system — see web/DESIGN.md. Swiss: black type on white, one
+ * red accent, hairline rules, square boxes and pill buttons. Every colour,
+ * radius and timing below comes from DESIGN.md; change it there first.
+ */
+@theme {
+    --font-sans: "Host Grotesk Variable", "Host Grotesk", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif;
+    /* Boxes are square; only pills (rounded-full) and dots are round. */
+    --radius-xs: 0;
+    --radius-sm: 0;
+    --radius-md: 0;
+    --radius-lg: 0;
+    --radius-xl: 0;
+    --radius-2xl: 0;
+    --radius-3xl: 0;
+    --radius-4xl: 0;
+    /* No drop shadows: anything that floats gets a 1px frame instead. */
+    --shadow-2xs: none;
+    --shadow-xs: none;
+    --shadow-sm: none;
+    --shadow-md: 0 0 0 1px var(--app-rule);
+    --shadow-lg: 0 0 0 1px var(--app-rule);
+    --shadow-xl: 0 0 0 1px var(--app-rule);
+    --shadow-2xl: 0 0 0 1px var(--app-rule);
+    /* Error red is the accent red. */
+    --color-red-300: var(--p-red);
+    --color-red-400: var(--p-red);
+    --color-red-500: var(--p-red);
+    --color-red-600: var(--p-red);
+    --color-red-700: var(--p-red);
+    --color-red-50: rgba(209, 42, 30, 0.08);
+}
+
+:root {
+    /* Palette (DESIGN.md §Colour) */
+    --p-white: #ffffff;
+    --p-black: #0b0b0b;
+    --p-grey-1: #f2f2f2;
+    --p-grey-2: #dadada;
+    --p-grey-3: #8f8f8f;
+    --p-grey-4: #6b6b6b;
+    --p-red: #d12a1e;
+
+    --app-bg: var(--tg-theme-bg-color, var(--p-white));
+    --app-fg: var(--tg-theme-text-color, var(--p-black));
+    --app-hint: var(--tg-theme-hint-color, var(--p-grey-4));
+    --app-link: var(--tg-theme-link-color, var(--p-black));
+    --app-button: var(--tg-theme-button-color, var(--p-black));
+    --app-button-text: var(--tg-theme-button-text-color, var(--p-white));
+    --app-banner-bg: var(--tg-theme-button-color, var(--p-black));
+    --app-banner-text: var(--tg-theme-button-text-color, var(--p-white));
+    --app-secondary-bg: var(--tg-theme-secondary-bg-color, var(--p-grey-1));
+
+    --app-dialog-bg: var(--p-white);
+    --app-chat-user-bg: var(--p-grey-1);
+    --app-chat-user-surface-bg: var(--app-chat-user-bg);
+    --app-chat-user-fg: var(--p-black);
+    --app-chat-user-chip-bg: var(--p-white);
+    --app-chat-user-chip-fg: var(--p-black);
+    --app-chat-user-chip-action-bg: var(--p-black);
+    --app-chat-user-chip-action-fg: var(--p-white);
+    --app-chat-user-chip-action-hover-fg: var(--p-red);
+    --app-tool-card-bg: var(--p-grey-1);
+    --app-tool-group-bg: var(--app-tool-card-bg);
+    --app-tool-card-hover-bg: var(--p-grey-2);
+    --app-tool-card-accent: var(--p-grey-4);
+    --app-tool-card-muted-action-fg: var(--p-grey-3);
+    --app-tool-card-subtitle: var(--p-grey-4);
+    --app-code-header-bg: var(--p-grey-1);
+    --app-code-header-fg: var(--p-grey-4);
+    --app-code-copy-hover-bg: var(--p-grey-2);
+    --app-inline-code-border: transparent;
+    --app-inline-code-fg: var(--p-black);
+    --app-md-quote-bg: transparent;
+    --app-md-quote-border: var(--p-black);
+    --app-md-quote-fg: var(--p-black);
+    --app-md-table-bg: var(--p-white);
+    --app-md-table-head-bg: var(--p-grey-1);
+    --app-reasoning-bg: var(--p-grey-1);
+    --app-mermaid-node-fill: var(--p-white);
+    --app-mermaid-node-border: var(--p-black);
+    --app-mermaid-cluster-fill: var(--p-grey-1);
+    --app-mermaid-text: var(--p-black);
+    --app-link-muted: var(--p-grey-2);
+    --app-scrollbar-thumb: var(--p-grey-2);
+    --app-scrollbar-thumb-hover: var(--p-grey-3);
+
+    /* Hairlines and fills */
+    --app-border: var(--p-grey-2);
+    --app-divider: var(--p-grey-2);
+    --app-rule: var(--p-black);
+    --app-subtle-bg: var(--p-grey-1);
+    --app-code-bg: var(--p-grey-1);
+    --app-inline-code-bg: var(--p-grey-1);
+
+    /* Diff and git status keep their meaning colours: they encode data. */
+    --app-diff-added-bg: #e6ffed;
+    --app-diff-added-text: var(--p-black);
+    --app-diff-removed-bg: #ffeef0;
+    --app-diff-removed-text: var(--p-black);
+    --app-git-staged-color: #1f8a3b;
+    --app-git-unstaged-color: #b45309;
+    --app-git-deleted-color: var(--p-red);
+    --app-git-renamed-color: var(--p-black);
+    --app-git-untracked-color: var(--p-grey-3);
+
+    /* State badges: text colour only, on the page or a grey fill. */
+    --app-badge-warning-bg: var(--p-grey-1);
+    --app-badge-warning-text: #b45309;
+    --app-badge-warning-border: var(--p-grey-2);
+    --app-badge-success-bg: var(--p-grey-1);
+    --app-badge-success-text: #1f8a3b;
+    --app-badge-success-border: var(--p-grey-2);
+    --app-badge-error-bg: rgba(209, 42, 30, 0.08);
+    --app-badge-error-text: var(--p-red);
+    --app-badge-error-border: var(--p-red);
+
+    --app-font-scale: 1;
+    --app-chat-font-size: 0.9375rem;
+    --app-chat-line-height: 1.6rem;
+    --app-message-action-size: 1.125rem;
+
+    /*
+     * Former six-hue palette, folded onto the three tones the template allows:
+     * red wants a human, black is live, grey is everything else.
+     */
+    --c-rose: var(--p-red);
+    --c-orange: var(--p-red);
+    --c-green: var(--p-black);
+    --c-blue: var(--p-black);
+    --c-purple: var(--p-grey-4);
+    --c-yellow: var(--p-grey-4);
+    --c-pink: var(--p-grey-2);
+    --c-blue-soft: var(--p-grey-1);
+    --c-rose-soft: rgba(209, 42, 30, 0.08);
+    --c-orange-soft: rgba(209, 42, 30, 0.08);
+    --c-purple-soft: var(--p-grey-1);
+    --c-green-soft: var(--p-grey-1);
+    --c-yellow-soft: var(--p-grey-1);
+
+    /* Selected row: a solid black bar, white text */
+    --app-highlight-bg: var(--p-black);
+    --app-highlight-fg: var(--p-white);
+    --app-highlight-shadow: none;
+
+    --app-accent: var(--p-red);
+    --app-accent-strong: #a8211a;
+    --app-accent-soft: rgba(209, 42, 30, 0.12);
+    /* No soft shadows: floating surfaces get a 1px black frame. */
+    --app-shadow-pop: 0 0 0 1px var(--p-black);
+    --app-shadow-soft: 0 0 0 1px var(--p-grey-2);
+}
+
+[data-theme="dark"] {
+    --p-white: #0b0b0b;
+    --p-black: #f5f5f5;
+    --p-grey-1: #1a1a1a;
+    --p-grey-2: #333333;
+    --p-grey-3: #6b6b6b;
+    --p-grey-4: #9a9a9a;
+    --p-red: #e5483c;
+
+    --app-diff-added-bg: #0d2e1f;
+    --app-diff-added-text: #e6e6e6;
+    --app-diff-removed-bg: #3f1b23;
+    --app-diff-removed-text: #e6e6e6;
+    --app-git-staged-color: #4ade80;
+    --app-git-unstaged-color: #f59e0b;
+    --app-badge-warning-text: #fbbf24;
+    --app-badge-success-text: #4ade80;
+    --app-badge-error-bg: rgba(229, 72, 60, 0.14);
+    --app-accent-strong: #f07067;
+    --app-accent-soft: rgba(229, 72, 60, 0.2);
+    --c-rose-soft: rgba(229, 72, 60, 0.14);
+    --c-orange-soft: rgba(229, 72, 60, 0.14);
+}
+
+[data-theme="oled"] {
+    /*
+     * Pure-black canvas for OLED panels. Unlike Dark mode we never defer to
+     * --tg-theme-* here, otherwise Telegram's gray backgrounds would defeat the
+     * point of OLED black.
+     */
+    --p-white: #000000;
+    --p-black: #f5f5f5;
+    --p-grey-1: #121212;
+    --p-grey-2: #2a2a2a;
+    --p-grey-3: #6b6b6b;
+    --p-grey-4: #9a9a9a;
+    --p-red: #e5483c;
+
+    --app-bg: var(--p-white);
+    --app-fg: var(--p-black);
+    --app-hint: var(--p-grey-4);
+    --app-link: var(--p-black);
+    --app-button: var(--p-black);
+    --app-button-text: var(--p-white);
+    --app-banner-bg: var(--p-grey-1);
+    --app-banner-text: var(--p-black);
+    --app-secondary-bg: var(--p-grey-1);
+
+    --app-diff-added-bg: #07251a;
+    --app-diff-added-text: #e6e6e6;
+    --app-diff-removed-bg: #2c1217;
+    --app-diff-removed-text: #e6e6e6;
+    --app-git-staged-color: #4ade80;
+    --app-git-unstaged-color: #f59e0b;
+    --app-badge-warning-text: #fbbf24;
+    --app-badge-success-text: #4ade80;
+    --app-badge-error-bg: rgba(229, 72, 60, 0.14);
+    --app-accent-strong: #f07067;
+    --app-accent-soft: rgba(229, 72, 60, 0.2);
+    --c-rose-soft: rgba(229, 72, 60, 0.14);
+    --c-orange-soft: rgba(229, 72, 60, 0.14);
+}
+
+html {
+    font-size: calc(100% * var(--app-font-scale, 1));
+    color-scheme: light;
+    scrollbar-color: var(--app-scrollbar-thumb) transparent;
+    scrollbar-width: thin;
+}
+
+[data-theme="dark"],
+[data-theme="oled"] {
+    color-scheme: dark;
+}
+
+* {
+    scrollbar-color: var(--app-scrollbar-thumb) transparent;
+    scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+    background-color: var(--app-scrollbar-thumb);
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+    background-color: var(--app-scrollbar-thumb-hover);
+}
+
+*::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+button, [role="button"] {
+    cursor: pointer;
+}
+
+html,
+body {
+    height: 100vh;
+    height: 100dvh;
+    height: var(--app-viewport-height, 100dvh);
+    height: var(--tg-viewport-stable-height, var(--app-viewport-height, 100dvh));
+    touch-action: pan-x pan-y;
+    overscroll-behavior: none;
+    -webkit-text-size-adjust: 100%;
+}
+
+html[data-telegram-app="true"],
+html[data-telegram-app="true"] body {
+    overflow: hidden;
+}
+
+html:not([data-telegram-app="true"]),
+html:not([data-telegram-app="true"]) body {
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+body {
+    font-size: 1rem;
+    background: var(--app-bg);
+    color: var(--app-fg);
+}
+
+#root {
+    height: 100%;
+}
+
+/* Chat viewports own vertical scrolling; keep transiently oversized messages
+ * from creating a second document scrollbar without locking non-chat routes. */
+html:has(.chat-scroll-y),
+html:has(.chat-scroll-y) body,
+html:has(.chat-scroll-y) #root {
+    overflow: hidden;
+}
+
+.app-scroll-y {
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+}
+
+/* On touch-first devices, keep the chat scrollbar from shifting centered content. */
+@media (hover: none) and (pointer: coarse) {
+    .chat-scroll-y {
+        scrollbar-gutter: stable both-edges;
+    }
+
+    .chat-scroll-content {
+        padding-inline: max(
+            0.125rem,
+            calc(0.75rem - var(--chat-scroll-gutter-inline, 0px))
+        );
+    }
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .session-list-item:hover,
+    .session-list-new-button:hover {
+        background-color: var(--app-subtle-bg);
+    }
+}
+
+/* Collapsible panel animation */
+.collapsible-panel {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.collapsible-panel[data-open] {
+    grid-template-rows: 1fr;
+}
+
+.collapsible-panel > .collapsible-inner {
+    overflow: hidden;
+    opacity: 0;
+    transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.collapsible-panel[data-open] > .collapsible-inner {
+    opacity: 1;
+}
+
+/* Scale content area to use available space on wide screens */
+@media (min-width: 1280px) {
+    :root {
+        --content-max-w: min(90%, 1200px);
+    }
+}
+
+/* Keep the session list scrollbar on the left at every viewport size. */
+.session-list-scrollbar-left {
+    direction: rtl;
+    scrollbar-gutter: stable;
+}
+
+.session-list-scrollbar-left > * {
+    direction: ltr;
+}
+
+/* Match fixed sidebar controls to the space reserved for the left scrollbar. */
+.session-list-scrollbar-offset {
+    padding-left: 8px;
+}
+
+/* Desktop sidebar: use custom width from CSS variable.
+   Kept in sync with the Tailwind `split` breakpoint (see tailwind.config.ts)
+   so the sidebar width/resize applies as soon as the split view appears on
+   compact tablets. */
+@media (min-width: 920px) {
+    /* Apply resizable width to sidebar.
+       Cap it against the viewport so a wide persisted width (up to 600px, from
+       resizing on desktop) can't crush the detail pane on a compact split.
+       424px = 420px min detail pane + 4px resize handle, which preserves the
+       previous 1024px worst case (1024 - 600 - 4 = 420) down to 920px. The cap
+       is a no-op on desktop where 100vw - 424px exceeds the stored width. */
+    div[style*="--sidebar-w"] {
+        width: min(var(--sidebar-w), calc(100vw - 424px)) !important;
+    }
+}
+
+/* Sidebar resize handle */
+.sidebar-resize-handle {
+    width: 5px;
+    cursor: col-resize;
+    /* A hairline rule with a wider grab area around it. */
+    background: linear-gradient(var(--app-rule), var(--app-rule)) center / 1px 100% no-repeat;
+    transition: background-size var(--dur) var(--ease-out);
+}
+
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle[data-dragging] {
+    background-image: linear-gradient(var(--app-accent), var(--app-accent));
+}
+
+.sidebar-resize-handle[data-dragging] {
+    opacity: 0.6;
+}
+
+/*
+ * Keep message layout fully realized while scrolling. `content-visibility: auto`
+ * made Chromium replace rough intrinsic heights as older messages entered view,
+ * which could change scrollTop and bounce the chat away from the user's target.
+ */
+.happy-thread-messages > * {
+    overflow-anchor: none;
+}
+
+/* Markdown styles */
+.markdown-content a { color: var(--app-link); text-decoration: underline; }
+.markdown-content code { background: var(--app-inline-code-bg); padding: 0.1em 0.3em; font-size: 0.9em; }
+.markdown-content blockquote { border-left: 1px solid var(--app-rule); padding-left: 0.75rem; margin: 0.5rem 0; }
+.markdown-content ul, .markdown-content ol { padding-left: 1.5rem; margin: 0.5rem 0; }
+.markdown-content table { border-collapse: collapse; width: 100%; }
+.markdown-content th, .markdown-content td { border: 1px solid var(--app-border); padding: 0.25rem 0.5rem; }
+
+.aui-md {
+    color: var(--app-fg);
+    font-size: var(--app-chat-font-size);
+    line-height: var(--app-chat-line-height);
+}
+
+.happy-chat-text {
+    font-size: var(--app-chat-font-size);
+    line-height: var(--app-chat-line-height);
+}
+
+
+.tool-result-quote :where(.aui-md, .aui-md-p, .aui-md-li, .aui-md-td, .aui-md-th, .aui-md-strong, .aui-md-em, .aui-md-h1, .aui-md-h2, .aui-md-h3, .aui-md-h4, .aui-md-h5, .aui-md-h6) {
+    color: inherit;
+    font-size: inherit;
+    line-height: inherit;
+}
+
+.tool-result-quote :where(.aui-md-table) {
+    font-size: inherit;
+}
+
+.tool-result-quote :where(.aui-md-a) {
+    color: var(--app-link);
+}
+
+.happy-message-actions-first-line {
+    align-self: flex-start;
+    margin-top: max(0px, calc((var(--app-chat-line-height) - var(--app-message-action-size)) / 2));
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .happy-message-actions {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 150ms ease;
+    }
+
+    .happy-message:hover .happy-message-actions,
+    .happy-message:focus-within .happy-message-actions {
+        opacity: 1;
+        pointer-events: auto;
+    }
+}
+
+.aui-md :where(.contains-task-list) {
+    list-style: none;
+    padding-left: 0;
+}
+
+.aui-md :where(input[type="checkbox"]) {
+    margin-right: 0.55rem;
+}
+
+.aui-md :where(.katex-display) {
+    margin: 0.9rem 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 0.15rem;
+}
+
+.aui-md :where(pre) {
+    white-space: pre;
+}
+
+.aui-md :where(p + ul, p + ol, p + blockquote, p + .aui-md-table-wrapper) {
+    margin-top: 0.85rem;
+}
+
+.aui-mermaid-diagram svg {
+    height: auto;
+}
+
+.aui-mermaid-diagram svg .node rect,
+.aui-mermaid-diagram svg .node circle,
+.aui-mermaid-diagram svg .node ellipse,
+.aui-mermaid-diagram svg .node polygon,
+.aui-mermaid-diagram svg .label-container {
+    fill: var(--app-mermaid-node-fill) !important;
+    stroke: var(--app-mermaid-node-border) !important;
+}
+
+.aui-mermaid-diagram svg .cluster rect,
+.aui-mermaid-diagram svg .cluster polygon {
+    fill: var(--app-mermaid-cluster-fill) !important;
+    stroke: var(--app-mermaid-node-border) !important;
+}
+
+.aui-mermaid-diagram svg .nodeLabel,
+.aui-mermaid-diagram svg .label,
+.aui-mermaid-diagram svg .label text,
+.aui-mermaid-diagram svg text {
+    fill: var(--app-mermaid-text) !important;
+    color: var(--app-mermaid-text) !important;
+}
+
+.happy-user-bubble .aui-md {
+    color: inherit;
+}
+
+.aui-md-codeblock .shiki,
+.aui-md-codeblock .shiki span:not([data-line-number]) {
+    background-color: transparent !important;
+}
+
+/* Shiki dual theme colors */
+.shiki,
+.shiki span:not([data-line-number]) {
+    color: var(--shiki-light) !important;
+    font-style: var(--shiki-light-font-style) !important;
+    font-weight: var(--shiki-light-font-weight) !important;
+    text-decoration: var(--shiki-light-text-decoration) !important;
+}
+
+html[data-theme="dark"] .shiki,
+html[data-theme="dark"] .shiki span:not([data-line-number]),
+html[data-theme="oled"] .shiki,
+html[data-theme="oled"] .shiki span:not([data-line-number]) {
+    color: var(--shiki-dark) !important;
+    font-style: var(--shiki-dark-font-style) !important;
+    font-weight: var(--shiki-dark-font-weight) !important;
+    text-decoration: var(--shiki-dark-text-decoration) !important;
+}
+
+/* PWA install prompt animation */
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
+
+@keyframes menu-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-menu-pop {
+  animation: pw-pop-in var(--dur) var(--ease-out) both;
+  transform-origin: top;
+}
+
+/* Syncing spinner animation */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+.animate-spin-slow {
+  animation: spin 2s linear infinite;
+}
+
+/* New messages indicator bounce animation */
+@keyframes bounce-in {
+  0% {
+    transform: translateX(-50%) scale(0.8);
+    opacity: 0;
+  }
+  50% {
+    transform: translateX(-50%) scale(1.05);
+  }
+  100% {
+    transform: translateX(-50%) scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-bounce-in {
+  animation: bounce-in 0.3s ease-out;
+}
+
+/* ReactQueryDevtools button - move to middle-right to avoid blocking UI */
+.tsqd-open-btn-container {
+  bottom: 50% !important;
+  transform: translateY(50%);
+}
+
+/* ------------------------------------------------------------------ */
+/* dugong motion                                                     */
+/* ------------------------------------------------------------------ */
+
+:root {
+    /* Motion (DESIGN.md §Motion): the template's two curves, no overshoot. */
+    --ease: cubic-bezier(0.7, 0, 0.2, 1);
+    --ease-out: cubic-bezier(0.25, 1, 0.5, 1);
+    --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+    /* Kept as an alias so older call sites read the same curve. */
+    --ease-spring: var(--ease-out);
+    --dur-fast: 300ms;
+    --dur: 450ms;
+    --dur-slow: 700ms;
+    /* The template's entrance curves: rules draw on --ease-rule, content
+       slides in on --ease-post. */
+    --ease-rule: cubic-bezier(0.76, 0, 0.24, 1);
+    --ease-post: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    letter-spacing: -0.005em;
+}
+
+::selection {
+    background: var(--app-accent-soft);
+}
+
+:where(button, [role="button"], a) {
+    -webkit-tap-highlight-color: transparent;
+}
+
+
+/*
+ * Tailwind's transition-colors leaves scale out, which would make the press
+ * above snap. Unlayered, so it wins over the utility of the same name.
+ */
+.transition-colors {
+    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, opacity, box-shadow, scale;
+}
+
+/* Layered as base so component utilities (outline-none, etc.) still win. */
+@layer base {
+    :where(button, [role="button"]):not([class*="transition"]) {
+        transition: background-color var(--dur-fast), color var(--dur-fast), opacity var(--dur-fast);
+    }
+
+    :focus-visible {
+        outline: 2px solid var(--app-accent);
+        outline-offset: 2px;
+    }
+}
+
+/*
+ * Interaction classes sit in the components layer so utilities on the same
+ * element (fixed, absolute, …) win over their position: relative.
+ */
+@layer components {
+    /*
+     * Sweep: the template's primary button. Black pill; on hover a red fill opens
+     * from just left of centre. Add to any solid button.
+     */
+    .pw-sweep {
+        position: relative;
+        overflow: hidden;
+        isolation: isolate;
+    }
+
+    .pw-sweep::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        background: var(--app-accent);
+        transform: scaleX(0);
+        transform-origin: 37% 50%;
+        transition: transform 500ms var(--ease);
+    }
+
+    @media (hover: hover) {
+        .pw-sweep:not(:disabled):hover::before {
+            transform: scaleX(1);
+        }
+    }
+
+    /*
+     * Ghost sweep: the template's outlined icon button. A fill of the text colour
+     * opens across it and the glyph turns to the page colour.
+     */
+    .pw-ghost-sweep {
+        position: relative;
+        overflow: hidden;
+        isolation: isolate;
+        transition: color var(--dur-fast);
+    }
+
+    .pw-ghost-sweep::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        background: var(--app-fg);
+        transform: scaleX(0);
+        transition: transform var(--dur) var(--ease);
+    }
+
+    @media (hover: hover) {
+        .pw-ghost-sweep:not(:disabled):hover {
+            color: var(--app-bg);
+        }
+
+        .pw-ghost-sweep:not(:disabled):hover::before {
+            transform: scaleX(1);
+        }
+    }
+
+    /* Row fill: a grey wash rises from the row's bottom hairline on hover. */
+    .pw-row-fill {
+        position: relative;
+        isolation: isolate;
+    }
+
+    .pw-row-fill::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        background: var(--app-subtle-bg);
+        transform: scaleY(0);
+        transform-origin: 50% 100%;
+        transition: transform var(--dur) var(--ease);
+    }
+
+    @media (hover: hover) {
+        .pw-row-fill:hover::before {
+            transform: scaleY(1);
+        }
+    }
+
+    /* Plus that turns into a minus when its <details> or [data-open] host opens. */
+    .pw-plus {
+        position: relative;
+        display: inline-block;
+        flex: none;
+        width: 0.75rem;
+        height: 0.75rem;
+    }
+
+    .pw-plus::before,
+    .pw-plus::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: calc(50% - 1px);
+        height: 2px;
+        background: currentColor;
+        transition: transform 350ms var(--ease);
+    }
+
+    .pw-plus::after {
+        transform: rotate(90deg);
+    }
+
+    [open] > summary .pw-plus::after,
+    .pw-plus[data-open]::after {
+        transform: rotate(0deg);
+    }
+}
+
+/* Rise: fade up into place. Set --i on siblings to stagger them. */
+@keyframes pw-rise {
+    from {
+        opacity: 0;
+        transform: translateY(14px);
+    }
+}
+
+/* Lift: kept as a hook for hover colour changes; nothing moves. */
+.pw-lift {
+    transition: background-color var(--dur-fast), color var(--dur-fast);
+}
+
+.pw-page {
+    animation: pw-rise 360ms var(--ease-out) both;
+}
+
+/* Pop: overlays scale in on a spring and drop out fast. */
+@keyframes pw-pop-in {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+}
+
+@keyframes pw-pop-out {
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0;
+    }
+}
+
+@keyframes pw-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes pw-fade-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+.pw-pop[data-state="open"] {
+    animation: pw-pop-in var(--dur) var(--ease-out) both;
+}
+
+.pw-pop[data-state="closed"] {
+    animation: pw-pop-out 140ms var(--ease-in) both;
+}
+
+.pw-overlay[data-state="open"] {
+    animation: pw-fade-in var(--dur) var(--ease-out) both;
+}
+
+.pw-overlay[data-state="closed"] {
+    animation: pw-fade-out var(--dur-fast) var(--ease-in) both;
+}
+
+/* Every Radix popover / select / tooltip pops in from its anchor side. */
+[data-radix-popper-content-wrapper] > [data-state="open"],
+[data-radix-popper-content-wrapper] > [data-state="delayed-open"],
+[data-radix-popper-content-wrapper] > [data-state="instant-open"] {
+    animation: pw-pop-in var(--dur) var(--ease-out) both;
+    transform-origin: var(--radix-popper-transform-origin);
+    box-shadow: var(--app-shadow-pop);
+}
+
+/* Reveal: display lines slide up out of a mask, one after another. */
+@keyframes pw-line-up {
+    from { transform: translateY(105%); }
+}
+
+.pw-reveal {
+    display: block;
+    overflow: hidden;
+    padding-bottom: 0.06em;
+}
+
+.pw-reveal > span {
+    display: inline-block;
+    animation: pw-line-up 1000ms var(--ease-out) both;
+    animation-delay: calc(var(--i, 0) * 90ms + 80ms);
+}
+
+/* The template's text link: a standing 1px underline; a grey fill rises behind it on hover. */
+.pw-underline {
+    background-image: linear-gradient(currentColor, currentColor), linear-gradient(var(--app-subtle-bg), var(--app-subtle-bg));
+    background-repeat: no-repeat;
+    background-position: 0 100%, 0 100%;
+    background-size: 100% 1px, 100% 0%;
+    padding: 0 1px 1px;
+    transition: background-size var(--dur) var(--ease);
+}
+
+@media (hover: hover) {
+    .pw-underline:hover {
+        background-size: 100% 1px, 100% 100%;
+    }
+}
+
+/* Type roles (DESIGN.md §Type). */
+.pw-display {
+    letter-spacing: -0.05em;
+    line-height: 0.88;
+    font-weight: 500;
+}
+
+.pw-title {
+    font-size: 1.5rem;
+    font-weight: 500;
+    line-height: 1.12;
+    letter-spacing: -0.025em;
+}
+
+.pw-eyebrow {
+    font-size: 0.75rem;
+    line-height: 1.25;
+    letter-spacing: 0;
+    font-weight: 600;
+}
+
+/* Count badges and other small chips pop when they appear or change. */
+.pw-bump {
+    animation: pw-pop-in var(--dur) var(--ease-out) backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-delay: 0ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+.pw-section > h2 { color: var(--app-hint); }
+
+/* Chat messages slide up as they arrive. Lighter than pw-rise: a thread can hold hundreds. */
+@keyframes pw-msg-in {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+}
+
+.happy-message {
+    animation: pw-msg-in var(--dur) var(--ease-out) backwards;
+}
+
+/* Side panels slide in from the right; full-screen sheets rise from the bottom. */
+@keyframes pw-panel-in {
+    from {
+        opacity: 0;
+        transform: translateX(24px);
+    }
+}
+
+@keyframes pw-sheet-in {
+    from {
+        opacity: 0.4;
+        transform: translateY(40px);
+    }
+}
+
+.pw-panel-in {
+    animation: pw-panel-in var(--dur) var(--ease-out) backwards;
+}
+
+.pw-sheet-in {
+    animation: pw-sheet-in var(--dur) var(--ease-out) backwards;
+}
+
+/* The gliding selection fill in the task list. */
+.pw-highlight {
+    background: var(--app-highlight-bg);
+    box-shadow: var(--app-highlight-shadow);
+    transition: transform var(--dur) var(--ease), width var(--dur) var(--ease), height var(--dur) var(--ease);
+    will-change: transform;
+}
+
+.pw-highlight-enter {
+    animation: pw-fade-in 200ms var(--ease-out) backwards;
+    transition: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* Template entrances (DESIGN.md §5). Stagger siblings with --i.        */
+/* ------------------------------------------------------------------ */
+
+@keyframes pw-rule-x { from { transform: scaleX(0); } }
+@keyframes pw-rule-y { from { transform: scaleY(0); } }
+@keyframes pw-post { from { opacity: 0; transform: translateX(var(--post-from, -36px)); } }
+
+@layer components {
+    /* A hairline that draws itself left to right. Use on an element that is the line. */
+    .pw-rule-in {
+        transform-origin: 0 50%;
+        animation: pw-rule-x 1.1s var(--ease-rule) backwards;
+        animation-delay: calc(min(var(--i, 0), 14) * 60ms);
+    }
+
+    /* A vertical rule that draws itself top to bottom. */
+    .pw-rule-down {
+        transform-origin: 50% 0;
+        animation: pw-rule-y 1s var(--ease) backwards;
+    }
+
+    /* Content sliding in from the left (or set --post-from: 36px for the right). */
+    .pw-post-in {
+        animation: pw-post 0.9s var(--ease-post) backwards;
+        animation-delay: calc(min(var(--i, 0), 14) * 60ms);
+    }
+
+    /*
+     * Ledger row: a hairline on top that draws in when the row first appears.
+     * Replaces border-top so the line can animate.
+     */
+    .pw-ledger {
+        position: relative;
+    }
+
+    .pw-ledger::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: var(--app-border);
+        transform-origin: 0 50%;
+        animation: pw-rule-x 1.1s var(--ease-rule) backwards;
+        animation-delay: calc(min(var(--i, 0), 14) * 60ms);
+        pointer-events: none;
+    }
+}

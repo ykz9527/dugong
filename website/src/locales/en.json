@@ -1,0 +1,103 @@
+{
+  "meta": {
+    "title": "dugong: run your coding agents as tasks",
+    "description": "dugong puts the work of all your coding agents in one task list. Tasks move on their own as the agents work, and your phone tells you when one needs your OK. Self-hosted, AGPL-3.0."
+  },
+  "nav": {
+    "docs": "Docs",
+    "github": "GitHub",
+    "getStarted": "Quick start",
+    "menu": "Menu"
+  },
+  "hero": {
+    "version": "{{version}} is out",
+    "title": "Run five coding agents without watching five terminals.",
+    "subtitle": "dugong puts the work of all your coding agents in one task list. Each task moves on its own as its agent works. An assistant reads the list with you, and when an agent needs your OK, your phone gets a notification.",
+    "start": "Quick start",
+    "github": "View on GitHub",
+    "screenshotAlt": "dugong: the task list grouped by status, a task's chat, and the task assistant asking before it messages a task"
+  },
+  "states": {
+    "title": "Tasks move by themselves",
+    "intro": "A task is a prompt, a working directory and an agent. Press Start and dugong starts a session, sends the prompt, and moves the task between six states as the agent works.",
+    "colState": "State",
+    "colMeaning": "What it means",
+    "colAction": "What you do",
+    "rows": [
+      { "name": "Backlog", "meaning": "Written down, not started", "action": "Start it when you're ready" },
+      { "name": "Ready", "meaning": "It ran but didn't finish: cancelled, or an ordinary failure", "action": "Start it again" },
+      { "name": "Running", "meaning": "The agent is working, or finishing background work it started", "action": "Nothing" },
+      { "name": "Blocked", "meaning": "Something outside the task broke: the session died, the runner refused, the prompt never arrived", "action": "Fix that first" },
+      { "name": "Review", "meaning": "The turn ended, or the agent is waiting for your OK or an answer", "action": "Read it, answer it, or mark it Done" },
+      { "name": "Done", "meaning": "You marked it done", "action": "Archive it when you like" }
+    ],
+    "note": "Review and Blocked are shown in red, and most of the time they are the only tasks you need to look at. A task goes to Review when the agent's turn ends, not when its process exits, because a Claude Code session stays alive between turns."
+  },
+  "assistant": {
+    "title": "An assistant beside the list",
+    "body1": "Everyone on the hub gets their own assistant, in a panel next to the task they have open. Ask it \"can this one merge?\" and it reads the task, its history and your earlier notes before it answers. It keeps notes you can read, edit and undo.",
+    "body2": "It can message, start, stop or answer a task, asking you first until you allow that for good. When a small decision is unclear, it goes ahead with its best pick and files the question under To answer, with how to back out. It runs on Claude or Codex, and each person picks."
+  },
+  "worktrees": {
+    "title": "Worktrees and pull requests",
+    "body": "A task runs in the directory you chose or in a git worktree of its own, so several tasks on one repo never touch each other's files. When it's done, Open PR pushes the branch and opens a GitHub pull request; the task panel then shows the PR, its CI checks and any conflicts.",
+    "screenshotAlt": "The task panel: where the task is in its life, its branch and worktree, and its pull request with CI checks"
+  },
+  "schedules": {
+    "title": "Schedules",
+    "body": "A task can run on a schedule, for example every weekday at 9:00 in your time zone, starting fresh each time or continuing its last conversation. A run missed while the hub was down happens once when it comes back, two runs never overlap, and three failures in a row pause the schedule."
+  },
+  "phone": {
+    "title": "From your phone",
+    "body": "The web app works on a phone and can be installed like an app, with the same task list, chats and assistant. When an agent asks for permission, the person who owns the task gets a push notification, and one tap on Allow lets the agent carry on. Notifications can also go to Telegram or ServerChan.",
+    "tasksAlt": "The task list on a phone, grouped by status",
+    "approveAlt": "A task on a phone waiting for permission to run its tests"
+  },
+  "also": {
+    "title": "Also included",
+    "items": [
+      "Ten agents: Claude Code, Codex, Cursor Agent, GitHub Copilot, Grok Build, Kimi, OpenCode, Pi, Antigravity and DeepSeek Harness.",
+      "Start a session in your terminal with dugong claude, continue it in the browser, and switch back. It stays one conversation.",
+      "Turn a Claude Code or Codex conversation you already had into a task.",
+      "A terminal and a file browser in the web app, on the machine where the agent runs.",
+      "Several people can share one hub, each seeing their own tasks and assistant.",
+      "Agents keep running if you restart the hub, stop the runner or close the tab."
+    ]
+  },
+  "install": {
+    "title": "Quick start",
+    "lead": "You need Node.js 18 or later, and an agent CLI that is installed and logged in, such as Claude Code or Codex.",
+    "step1": "Install",
+    "step2": "Start the hub",
+    "step2Hint": "web app on http://localhost:3006",
+    "step3": "In a second shell, start a runner",
+    "step3Hint": "lets the hub start agents under ~/code",
+    "open": "Open http://localhost:3006, sign in with the access token the hub printed, and press + to write your first task.",
+    "relay": "To use it from your phone, start the hub with dugong hub --relay. It prints a public HTTPS address and a QR code. Traffic through the relay is end-to-end encrypted, and the relay is off unless you ask for it.",
+    "binary": "Each release also has a single binary for macOS, Linux and Windows.",
+    "releases": "Releases",
+    "copy": "Copy",
+    "copied": "Copied"
+  },
+  "compare": {
+    "title": "Compared with other tools",
+    "body1": "Most tools for running agents side by side are a desktop app or a terminal on the machine in front of you, with a worktree per task. dugong has the worktrees too. It differs in being a server you open from any browser, so your laptop and your phone show the same task list; in putting every session from every agent on your phone, with notifications; in following the agent's turns instead of its process; and in the assistant.",
+    "body2": "It doesn't have inline diff review with line comments, or a built-in preview browser. If those matter more to you than stepping away from your desk, a desktop tool may suit you better. If you run one agent at a time, the agent's own CLI is enough.",
+    "fork": "dugong is a fork of HAPI and keeps what HAPI does for driving an agent remotely. It drops HAPI's native iOS and Android apps: dugong is a web app only."
+  },
+  "footer": {
+    "tagline": "Run your coding agents as tasks, on your own machines.",
+    "project": "Project",
+    "docs": "Docs",
+    "releases": "Releases",
+    "issues": "Issues",
+    "upstream": "HAPI, the project dugong is forked from",
+    "privacy": "Privacy",
+    "license": "Open source under AGPL-3.0."
+  },
+  "notFound": {
+    "title": "Page not found",
+    "body": "There is nothing at this address.",
+    "back": "Back to the home page"
+  }
+}

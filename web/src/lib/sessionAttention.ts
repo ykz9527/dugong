@@ -1,0 +1,68 @@
+import { backgroundAgentCountOf } from '@hapi/protocol'
+import type { SessionSummary } from '@/types/api'
+
+export type SessionAttention =
+    | { kind: 'permission' }
+    | { kind: 'input' }
+    | { kind: 'background' }
+    | { kind: 'unread' }
+
+/** True when the session has activity newer than the operator's last-seen watermark. */
+export function sessionIsUnread(
+    summary: SessionSummary,
+    options: { lastSeenAt: number }
+): boolean {
+    return summary.updatedAt > options.lastSeenAt
+}
+
+export function classifySessionAttention(
+    summary: SessionSummary,
+    options: { selected: boolean; lastSeenAt: number; manualUnreadAt?: number | null }
+): SessionAttention | null {
+    if (options.selected) {
+        return options.manualUnreadAt === summary.updatedAt
+            ? { kind: 'unread' }
+            : null
+    }
+
+    if (summary.thinking) {
+        return null
+    }
+
+    const pendingRequestKinds = Array.isArray(summary.pendingRequestKinds)
+        ? summary.pendingRequestKinds
+        : []
+
+    if (pendingRequestKinds.includes('permission')) {
+        return { kind: 'permission' }
+    }
+
+    if (pendingRequestKinds.includes('input')) {
+        return { kind: 'input' }
+    }
+
+    // Only background agents mean "still working". A dev server left running
+    // is not, and must not hide the unread marker that says to go look at it.
+    if (summary.active && backgroundAgentCountOf(summary) > 0) {
+        return { kind: 'background' }
+    }
+
+    if (sessionIsUnread(summary, { lastSeenAt: options.lastSeenAt })) {
+        return { kind: 'unread' }
+    }
+
+    return null
+}
+
+export function getSessionAttentionLabelKey(attention: SessionAttention): string {
+    switch (attention.kind) {
+        case 'permission':
+            return 'session.item.permission'
+        case 'input':
+            return 'session.item.needsInput'
+        case 'background':
+            return 'session.item.background'
+        case 'unread':
+            return 'session.item.newActivity'
+    }
+}

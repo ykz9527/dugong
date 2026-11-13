@@ -1,0 +1,103 @@
+{
+  "meta": {
+    "title": "dugong：把编码 agent 当任务来跑",
+    "description": "dugong 把你所有编码 agent 的活放进一张任务清单。agent 干到哪一步，任务就自己挪到哪一步；哪个 agent 需要你点头，手机上就会收到通知。自己部署，AGPL-3.0 开源。"
+  },
+  "nav": {
+    "docs": "文档",
+    "github": "GitHub",
+    "getStarted": "快速开始",
+    "menu": "菜单"
+  },
+  "hero": {
+    "version": "{{version}} 已发布",
+    "title": "同时跑五个编码 agent，不用开五个终端盯着。",
+    "subtitle": "dugong 把你所有编码 agent 的活放进一张任务清单。agent 干到哪一步，任务就自己挪到哪一步。旁边有个助手和你一起看这张清单；哪个 agent 需要你点头，手机上就会收到通知。",
+    "start": "快速开始",
+    "github": "在 GitHub 上查看",
+    "screenshotAlt": "dugong：按状态分组的任务列表、任务对话，以及给任务发消息前先征求同意的助手"
+  },
+  "states": {
+    "title": "任务自己流转",
+    "intro": "一个任务就是一段 prompt、一个工作目录和一个 agent。点开始，dugong 起会话、发 prompt，之后随着 agent 的进展，任务在六种状态之间自己挪。",
+    "colState": "状态",
+    "colMeaning": "意思",
+    "colAction": "你要做的",
+    "rows": [
+      { "name": "待办 Backlog", "meaning": "写下了，还没开始", "action": "想开始的时候点开始" },
+      { "name": "就绪 Ready", "meaning": "跑过，但没跑完：被取消，或者普通的失败", "action": "再开始一次" },
+      { "name": "运行中 Running", "meaning": "agent 在干活，或者在等它自己开的后台任务跑完", "action": "不用管" },
+      { "name": "受阻 Blocked", "meaning": "任务之外的东西坏了：会话断了、runner 拒绝了、prompt 没送到", "action": "先把那个问题解决" },
+      { "name": "待审阅 Review", "meaning": "这一轮结束了，或者 agent 在等你批准、等你回答", "action": "看结果、回答它，或者标成完成" },
+      { "name": "完成 Done", "meaning": "你标的", "action": "想归档就归档" }
+    ],
+    "note": "待审阅和受阻是红色的，大多数时候你只需要看这两组。任务进待审阅，看的是 agent 这一轮有没有结束，不是进程有没有退出，因为 Claude Code 的会话在两轮之间一直活着。"
+  },
+  "assistant": {
+    "title": "旁边有个助手",
+    "body1": "用这个 hub 的每个人都有自己的助手，就在打开的任务旁边。问它\"这个能合了吗\"，它会先看任务、历史和你以前交代过的话，再回答。它记的笔记你都能看、能改、能撤销。",
+    "body2": "它能给任务发消息、开始或停止任务、替任务回答问题，每次都先问你，直到你允许它以后不用问。拿不准的小决定，它先按自己的判断做下去，把问题记进\"待答\"，写上选错了怎么退回去。助手背后可以是 Claude，也可以是 Codex，每个人自己选。"
+  },
+  "worktrees": {
+    "title": "worktree 和 PR",
+    "body": "任务可以直接在你选的目录里跑，也可以在自己的 git worktree 里跑，这样同一个仓库里的几个任务不会互相改到对方的文件。做完后点 Open PR，会推送分支并在 GitHub 上开 PR，任务面板里能看到 PR、CI 状态和有没有冲突。",
+    "screenshotAlt": "任务面板：任务走到了哪一步、分支和 worktree、带 CI 状态的 PR"
+  },
+  "schedules": {
+    "title": "定时运行",
+    "body": "任务可以定时跑，比如按你的时区每个工作日早上 9 点，每次从头开始，或者接着上一次的对话。hub 停机期间错过的那次，恢复后补跑一次；两次运行不会叠在一起；连续失败三次，定时会自动暂停。"
+  },
+  "phone": {
+    "title": "在手机上",
+    "body": "网页在手机上也能用，还可以像 app 一样装到桌面上，任务清单、对话和助手都和电脑上一样。agent 要权限时，任务主人的手机会收到推送，点一下 Allow 它就接着跑。通知也可以发到 Telegram 或 Server 酱。",
+    "tasksAlt": "手机上按状态分组的任务列表",
+    "approveAlt": "手机上一个任务在等你批准跑测试"
+  },
+  "also": {
+    "title": "其他还有",
+    "items": [
+      "十种 agent：Claude Code、Codex、Cursor Agent、GitHub Copilot、Grok Build、Kimi、OpenCode、Pi、Antigravity、DeepSeek Harness。",
+      "在终端里用 dugong claude 开一个会话，到浏览器里接着聊，再切回终端，始终是同一段对话。",
+      "以前在 Claude Code 或 Codex 里聊过的对话，可以接管成一个任务。",
+      "网页里有终端和文件浏览，对应 agent 所在的那台机器。",
+      "几个人可以共用一个 hub，每个人只看到自己的任务和助手。",
+      "重启 hub、停掉 runner、关掉网页，agent 都会接着跑。"
+    ]
+  },
+  "install": {
+    "title": "快速开始",
+    "lead": "需要 Node.js 18 以上，以及一个装好并登录了的 agent CLI，比如 Claude Code 或 Codex。",
+    "step1": "安装",
+    "step2": "启动 hub",
+    "step2Hint": "网页在 http://localhost:3006",
+    "step3": "另开一个终端，启动 runner",
+    "step3Hint": "允许 hub 在 ~/code 下启动 agent",
+    "open": "打开 http://localhost:3006，用 hub 打印出来的 access token 登录，点 + 写第一个任务。",
+    "relay": "想在手机上用，就用 dugong hub --relay 启动。它会打印一个公网 HTTPS 地址和一个二维码。经过中转的流量是端到端加密的，不加 --relay 就不会打开中转。",
+    "binary": "每个 release 也有 macOS、Linux、Windows 的单文件版本。",
+    "releases": "Releases",
+    "copy": "复制",
+    "copied": "已复制"
+  },
+  "compare": {
+    "title": "和其他工具比",
+    "body1": "大多数并行跑 agent 的工具，是装在你面前这台机器上的桌面应用或终端，每个任务给一个 worktree。worktree 这点 dugong 也有。不同的地方在于：它是一个服务，任何浏览器都能打开，笔记本上和手机上是同一张任务清单；手机上能看到所有 agent 的所有会话，有通知；任务状态跟着 agent 的每一轮走，不看进程；另外还有助手。",
+    "body2": "它没有带行内评论的 diff 评审，也没有内置的预览浏览器。如果这两样对你来说比\"能离开电脑\"更重要，桌面工具可能更合适。如果你一次只跑一个 agent，用 agent 自己的 CLI 就够了。",
+    "fork": "dugong 是 HAPI 的 fork，HAPI 远程驱动 agent 的能力它都保留了。HAPI 的原生 iOS / Android app 没有带过来，dugong 只有网页版。"
+  },
+  "footer": {
+    "tagline": "在你自己的机器上，把编码 agent 当任务来跑。",
+    "project": "项目",
+    "docs": "文档",
+    "releases": "Releases",
+    "issues": "Issues",
+    "upstream": "HAPI，dugong 的上游项目",
+    "privacy": "隐私",
+    "license": "以 AGPL-3.0 协议开源。"
+  },
+  "notFound": {
+    "title": "页面不存在",
+    "body": "这个地址下什么都没有。",
+    "back": "回到首页"
+  }
+}

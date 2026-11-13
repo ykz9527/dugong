@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>dugong · launch video stage</title>
+    </head>
+    <body>
+        <!--
+            The launch video's stage: a 1920×1080 canvas holding the demo app
+            (desktop and phone) in iframes, plus the shots that are not the app
+            (terminals, lock screen, end card), captions and a pointer.
+            Driven by design/launch/video/record.mjs; see its README.
+        -->
+        <div id="canvas">
+            <section id="terminals" class="scene"></section>
+            <section id="desk" class="scene"><iframe data-src="?lang=en&video=1&assistant=0&path=/"></iframe></section>
+            <section id="deskB" class="scene"><iframe data-src="?lang=en&after=1&assistant=0&path=/sessions/s-handoff"></iframe></section>
+            <section id="phone" class="scene">
+                <div class="bezel">
+                    <iframe data-src="?lang=en&after=1&path=/sessions/s-codex"></iframe>
+                    <div id="lock">
+                        <div class="lock-time">9:41</div>
+                        <div class="lock-date">Thursday, November 12</div>
+                        <div id="notification">
+                            <img class="mark" src="/icon.svg" alt="" />
+                            <div>
+                                <div class="note-head"><b>dugong</b><span data-zh="现在">now</span></div>
+                                <div class="note-title" data-zh="Codex 也用 Auto 模式">Codex gets Auto mode too</div>
+                                <div class="note-body" data-zh="等你确认：bun run test">Waiting for your OK: bun run test</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            <section id="title" class="scene"><h1></h1></section>
+            <section id="duo" class="scene">
+                <div class="duo-desk"><iframe data-src="?lang=en&after=1&assistant=0&path=/sessions/s-handoff"></iframe></div>
+                <div class="bezel small"><iframe data-src="?lang=en&after=1&path=/"></iframe></div>
+            </section>
+            <section id="phoneB" class="scene">
+                <div class="bezel">
+                    <iframe data-src="?lang=en&after=1&path=/"></iframe>
+                    <div id="banner">
+                        <img class="mark" src="/icon.svg" alt="" />
+                        <div>
+                            <div class="note-head"><b>dugong</b><span data-zh="现在">now</span></div>
+                            <div class="note-title" data-zh="Codex 也用 Auto 模式">Codex gets Auto mode too</div>
+                            <div class="note-body" data-zh="等你确认：bun run test">Waiting for your OK: bun run test</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            <section id="single" class="scene">
+                <div class="bezel">
+                    <div class="mock-phone">
+                        <div class="mock-top">Remote session<br /><small>~/code/web · 1 session</small></div>
+                        <div class="mock-msg me">Clear the Vite cache and rebuild</div>
+                        <div class="mock-msg">I'll remove node_modules/.vite and run the build.</div>
+                        <div class="mock-card">Bash<br /><code>rm -rf node_modules/.vite &amp;&amp; bun run build</code><div class="mock-buttons"><span>Allow</span><span>Deny</span></div></div>
+                        <div class="mock-other" data-zh="其他 agent 和会话不在这里。">Other agents and sessions<br />are not here.</div>
+                    </div>
+                </div>
+            </section>
+            <section id="procs" class="scene">
+                <div class="procs">
+                    <div class="procs-head"><span>PROCESS</span><span>DIRECTORY</span><span>STATUS</span><span>UPTIME</span></div>
+                    <div><span>claude</span><span>~/code/dugong</span><span class="ok">● running</span><span>42m</span></div>
+                    <div><span>codex</span><span>~/code/api</span><span class="ok">● running</span><span>1h 03m</span></div>
+                    <div class="really-waiting" data-note="actually waiting for you since 1h 58m" data-zh-note="其实已经在等你 1 小时 58 分"><span>claude</span><span>~/code/web</span><span class="ok">● running</span><span>2h 11m</span></div>
+                    <div><span>claude</span><span>~/code/docs</span><span class="ok">● running</span><span>3h 40m</span></div>
+                    <div><span>codex</span><span>~/code/infra</span><span class="ok">● running</span><span>5h 02m</span></div>
+                </div>
+            </section>
+            <section id="stuck" class="scene">
+                <div class="term big">
+                    <header><i></i><i></i><i></i><span>claude — ~/code/scheduler</span><em class="waited">waiting 2h 07m</em></header>
+                    <pre><b>⏺</b> Two ways to wire this up, and they lead to different designs.
+
+  Which subsystem should I connect first?
+  ❯ 1. pkg/scheduler   fewer dependencies, full test coverage
+    2. pkg/kubelet     closer to what users touch
+
+  Enter to select · ↑/↓ to navigate · Esc to cancel</pre>
+                </div>
+            </section>
+            <section id="table" class="scene">
+                <div class="cmp">
+                    <div class="cmp-row head"><span></span><span data-zh="常见做法">The usual setup</span><span>dugong</span></div>
+                    <div class="cmp-row"><span data-zh="在哪跑">Where it runs</span><span data-zh="面前这台机器上的桌面应用或终端">A desktop app or a terminal on the machine in front of you</span><span data-zh="一个小服务，任何浏览器都能打开：Linux、Mac、Windows">A small server you open from any browser: Linux, Mac, Windows</span></div>
+                    <div class="cmp-row"><span data-zh="在手机上">On your phone</span><span data-zh="一个 agent 的一个会话">One session of one agent</span><span data-zh="十种 agent 的所有会话，有通知">Every session from ten agents, with notifications</span></div>
+                    <div class="cmp-row"><span data-zh="怎么知道要你处理">Knowing it needs you</span><span data-zh="进程还在不在跑？">Is the process still running?</span><span data-zh="这一轮结束了吗？后台的活干完了吗？">Did the turn end? Is background work done?</span></div>
+                    <div class="cmp-row"><span data-zh="agent 拿不准时">When the agent is unsure</span><span data-zh="停下来等你">It stops and waits for you</span><span data-zh="助手先做决定，把问题记下来">The assistant decides and files the question</span></div>
+                </div>
+            </section>
+            <div id="label"></div>
+            <section id="end" class="scene">
+                <img class="mark big" src="/icon.svg" alt="" />
+                <h1>dugong</h1>
+                <code>npm i -g @ykz9527/dugong &amp;&amp; dugong hub</code>
+                <p>github.com/ykz9527/dugong</p>
+            </section>
+            <div id="badge"></div>
+            <div id="pointer"></div>
+            <footer id="caption"><p></p></footer>
+        </div>
+        <script type="module" src="./launch-video-stage.ts"></script>
+    </body>
+</html>

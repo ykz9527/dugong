@@ -1,0 +1,87 @@
+{
+    "voice": "en-US-AndrewNeural",
+    "rate": "+4%",
+    "lines": [
+        {
+            "id": "intro",
+            "text": "If you're choosing a tool for running several coding agents, here is what dugong does differently.",
+            "zh": [
+                "如果你在挑一个同时跑多个编码 agent 的工具，下面是 dugong 不一样的地方。"
+            ]
+        },
+        {
+            "id": "where-usual",
+            "text": "Most tools for running agents side by side are a desktop app or a terminal, on the machine in front of you.",
+            "zh": [
+                "大多数并行跑 agent 的工具，是装在你面前这台机器上的桌面应用或终端。"
+            ]
+        },
+        {
+            "id": "where-dugong",
+            "text": "dugong is a small server. Run it on your laptop or on a box that stays on, and open the same task list from any browser, on Linux, Mac or Windows.",
+            "zh": [
+                "dugong 是一个小服务。",
+                "装在笔记本上，或者一台一直开着的机器上，用任何浏览器打开的都是同一张任务清单，Linux、Mac、Windows 都行。"
+            ]
+        },
+        {
+            "id": "phone-usual",
+            "text": "The remote controls built into agent CLIs follow one session of one agent.",
+            "zh": [
+                "agent CLI 自带的远程控制，只跟着一个 agent 的一个会话。"
+            ]
+        },
+        {
+            "id": "phone-dugong",
+            "text": "On dugong, your phone has every session, from ten different agents, and it gets a notification when one of them needs you.",
+            "zh": [
+                "在 dugong 里，手机上有所有会话，来自十种 agent；哪个需要你，手机就收到通知。"
+            ]
+        },
+        {
+            "id": "signal-usual",
+            "text": "Watching processes doesn't tell you much. A Claude Code session stays alive between turns, so it always looks busy.",
+            "zh": [
+                "只看进程，看不出什么。",
+                "Claude Code 的会话在两轮之间一直活着，所以看起来永远在忙。"
+            ]
+        },
+        {
+            "id": "signal-dugong",
+            "text": "dugong follows the turns and the background work, so a task turns red only when it needs you.",
+            "zh": [
+                "dugong 看的是每一轮有没有结束、后台的活干完没有，所以只有真正需要你的任务才会变红。"
+            ]
+        },
+        {
+            "id": "unsure-usual",
+            "text": "And when an agent isn't sure, it stops and waits for you. Sometimes for hours.",
+            "zh": [
+                "agent 拿不准的时候，就停下来等你。",
+                "有时一等就是几个小时。"
+            ]
+        },
+        {
+            "id": "unsure-dugong",
+            "text": "dugong's assistant makes the small calls, writes down why, and keeps the questions for when you're back.",
+            "zh": [
+                "dugong 的助手会先替你做小决定，写下为什么，把问题留到你回来再看。"
+            ]
+        },
+        {
+            "id": "table",
+            "text": "Here are the four differences side by side.",
+            "zh": [
+                "这四点放在一起看。"
+            ]
+        },
+        {
+            "id": "honest",
+            "text": "If you run one agent at a time, the CLI on its own is enough. If you run several, and want to step away, try dugong.",
+            "zh": [
+                "一次只跑一个 agent 的话，CLI 本身就够了。",
+                "同时跑好几个、还想离开电脑，就试试 dugong。"
+            ]
+        }
+    ]
+}
