@@ -46,6 +46,6 @@ A task can run in a git worktree of its own and open a GitHub pull request when 
 dugong drives Claude Code, Codex and eight other agent CLIs on your own machines. Your code, chats and database stay there, in `~/.dugong`. Read [how it works](./guide/how-it-works.md) for the parts, or [tasks and the assistant](./guide/tasks.md) for the day-to-day.
 
 
-## 中文功能图文手册
+## Illustrated feature manual / 功能图文手册
 
-[打开可点击的功能目录](manual/index.md)，按任务、会话、助手、文件与设置查操作步骤和界面截图。
+[English manual](manual/en/index.md) · [中文功能目录](manual/index.md)。按任务、会话、助手、文件与设置查操作步骤和界面截图。

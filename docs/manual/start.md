@@ -1,10 +1,12 @@
 # 开始使用与界面导航
 
+[简体中文](start.md) · [English](en/start.md)
+
 [返回功能目录](index.md)
 
 先连接 hub，再在同一 hub 上连接运行 agent 的机器。以下说明以 0.30.0 发布后的界面为基准；1.0.0 尚未发布，截图中的开发版本号不代表发布状态。
 
-<a name="connect"></a>
+<a name="connect" id="connect"></a>
 
 ## 连接与登录
 
@@ -18,7 +20,7 @@
 
 当前登录页可能仍显示旧名称 pitwall；请以你部署的 hub 地址确认服务。token 是访问凭据；工作区用户下拉框不能替代登录认证。
 
-<a name="layout"></a>
+<a name="layout" id="layout"></a>
 
 ## 认识桌面工作区
 
@@ -34,7 +36,7 @@
 
 桌面可以并排查看任务、会话和助手。手机因空间较小，会切换页面或打开覆盖面板。
 
-<a name="phone"></a>
+<a name="phone" id="phone"></a>
 
 ## 手机访问与安装
 

@@ -1,10 +1,12 @@
 # 设置：设备名称与机器连接
 
+[简体中文](settings-machines.md) · [English](en/settings-machines.md)
+
 [返回功能目录](index.md)
 
 在设置里识别在线机器；启动和登录 runner 仍在对应机器的终端完成。
 
-<a name="name"></a>
+<a name="name" id="name"></a>
 
 ## 查看和修改设备名称
 
@@ -17,7 +19,7 @@
 
 这会改 dugong 的展示名称，不会修改操作系统 hostname。该页面只列在线设备；机器消失时先检查 runner，而不是重新创建机器记录。
 
-<a name="connect"></a>
+<a name="connect" id="connect"></a>
 
 ## 机器不出现时如何处理
 

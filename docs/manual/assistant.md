@@ -1,10 +1,12 @@
 # 任务助手、记忆与待答
 
+[简体中文](assistant.md) · [English](en/assistant.md)
+
 [返回功能目录](index.md)
 
 助手帮助你查看任务并处理跨任务信息。选择的工作区用户决定使用哪位助手及其记忆范围。
 
-<a name="chat"></a>
+<a name="chat" id="chat"></a>
 
 ## 打开助手并限定任务范围
 
@@ -18,7 +20,7 @@
 
 助手可能提出给任务发消息、记忆更新等操作。是否已经执行，以操作卡片和目标会话实际变化为准。
 
-<a name="memory"></a>
+<a name="memory" id="memory"></a>
 
 ## 查看、新建和编辑记忆
 
@@ -32,7 +34,7 @@
 
 一句话描述会供助手识别记忆，需要时再读取正文。修改从后续消息起生效，不会重写已经结束的对话。
 
-<a name="questions"></a>
+<a name="questions" id="questions"></a>
 
 ## 处理待答问题
 
@@ -45,7 +47,7 @@
 
 如果提示答案已记录但无法通知助手返工，请在助手对话中明确补发说明。
 
-<a name="grants"></a>
+<a name="grants" id="grants"></a>
 
 ## 管理免确认操作
 

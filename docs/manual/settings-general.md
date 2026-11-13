@@ -1,10 +1,12 @@
 # 设置：通用与会话摘要
 
+[简体中文](settings-general.md) · [English](en/settings-general.md)
+
 [返回功能目录](index.md)
 
 从设置入口选择“通用”。语言与部分显示偏好保存在当前浏览器；hub 级开关会影响其他新建或恢复的会话。
 
-<a name="language"></a>
+<a name="language" id="language"></a>
 
 ## 切换界面语言
 
@@ -16,7 +18,7 @@
 
 语言选择不会自动翻译已有提示词、任务标题或对话。
 
-<a name="summary"></a>
+<a name="summary" id="summary"></a>
 
 ## 会话状态摘要
 

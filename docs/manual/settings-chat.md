@@ -1,10 +1,12 @@
 # 设置：输入行为与工具条
 
+[简体中文](settings-chat.md) · [English](en/settings-chat.md)
+
 [返回功能目录](index.md)
 
 打开“设置 → 聊天”。隐藏按钮后，可以在此恢复，不必重新安装。
 
-<a name="enter"></a>
+<a name="enter" id="enter"></a>
 
 ## 设置回车行为
 
@@ -16,7 +18,7 @@
 
 不确定快捷键时使用明确的发送按钮，避免误发长草稿。
 
-<a name="toolbar"></a>
+<a name="toolbar" id="toolbar"></a>
 
 ## 排列、分组和隐藏输入栏工具
 
@@ -29,7 +31,7 @@
 
 可调整附件、会话设置、展开编辑器、模型、推理强度、权限、终端、中止、远程切换、麦克风、暂存清单和定时发送等工具。实际可见项仍受 agent 与当前会话状态限制。
 
-<a name="cards"></a>
+<a name="cards" id="cards"></a>
 
 ## 工具卡片、思考过程与颜色
 

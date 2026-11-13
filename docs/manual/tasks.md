@@ -1,10 +1,12 @@
 # 任务列表、状态与生命周期
 
+[简体中文](tasks.md) · [English](en/tasks.md)
+
 [返回功能目录](index.md)
 
 任务记录工作目标、执行机器、目录和 agent；会话记录具体对话。先创建任务，再从详情启动或继续执行。
 
-<a name="browse"></a>
+<a name="browse" id="browse"></a>
 
 ## 查看和筛选任务
 
@@ -25,7 +27,7 @@
 
 状态代表执行阶段，不代表测试通过或代码已合并。
 
-<a name="create"></a>
+<a name="create" id="create"></a>
 
 ## 创建新任务
 
@@ -49,7 +51,7 @@
 
 机器为空时先检查 runner 与 hub 的连接。浏览器看不到的目录需由 runner 的 `--workspace-root` 开放。
 
-<a name="adopt"></a>
+<a name="adopt" id="adopt"></a>
 
 ## 把已有会话接为任务
 
@@ -62,7 +64,7 @@
 
 接管任务的“对话的起点”仅作描述。启动时继续原对话，不会再次发送这段描述。可接管的类型以当前界面与机器能力为准，不是每种 agent 都支持同样的历史导入。
 
-<a name="run"></a>
+<a name="run" id="run"></a>
 
 ## 启动、停止和切换状态
 
@@ -76,7 +78,7 @@
 
 手动切换状态不会替你验证代码，也不等于 Git 提交、推送或合并。停止是否成功应以界面结果为准。
 
-<a name="archive"></a>
+<a name="archive" id="archive"></a>
 
 ## 归档、恢复和删除
 

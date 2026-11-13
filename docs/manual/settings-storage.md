@@ -1,10 +1,12 @@
 # 设置：存储空间
 
+[简体中文](settings-storage.md) · [English](en/settings-storage.md)
+
 [返回功能目录](index.md)
 
 存储统计是 hub 的 SQLite 文件占用，不是整个项目磁盘用量。该入口供 hub 所有者使用。
 
-<a name="read"></a>
+<a name="read" id="read"></a>
 
 ## 查看数据库、WAL 与共享内存
 

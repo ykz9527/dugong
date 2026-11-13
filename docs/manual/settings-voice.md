@@ -1,10 +1,12 @@
 # 设置：语音输入与语音助手
 
+[简体中文](settings-voice.md) · [English](en/settings-voice.md)
+
 [返回功能目录](index.md)
 
 语音输入把声音转成输入框文字；语音助手提供双向语音对话。截图展示尚未配置后端的状态，真实可选项由管理员配置决定。
 
-<a name="mode"></a>
+<a name="mode" id="mode"></a>
 
 ## 选择语音模式并连接
 
@@ -17,7 +19,7 @@
 
 语音输入不会自动发送消息。若显示没有可用服务，需要先配置服务凭据；HTTPS、设备麦克风和浏览器权限也必须可用。
 
-<a name="credentials"></a>
+<a name="credentials" id="credentials"></a>
 
 ## 配置语音服务凭据
 
@@ -29,7 +31,7 @@
 
 环境变量提供的凭据可能只读；请按字段旁说明处理。界面只展示遮罩或来源，不应把真实密钥放入截图。各服务计费与登录方式由服务商决定。
 
-<a name="voices"></a>
+<a name="voices" id="voices"></a>
 
 ## 选择声音并试听
 
@@ -42,7 +44,7 @@
 
 列表中的声音能否使用取决于后端配置。没有后端时，列表可显示默认选项，但不代表已经能合成语音。
 
-<a name="advanced"></a>
+<a name="advanced" id="advanced"></a>
 
 ## 调整角色、说话方式与诊断
 

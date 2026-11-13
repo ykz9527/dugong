@@ -1,10 +1,12 @@
 # 设置：版本与项目入口
 
+[简体中文](settings-about.md) · [English](en/settings-about.md)
+
 [返回功能目录](index.md)
 
 排查问题前记录 CLI、hub 和网页版本，避免把不同版本的界面混在一起。
 
-<a name="version"></a>
+<a name="version" id="version"></a>
 
 ## 查看版本并打开项目页面
 

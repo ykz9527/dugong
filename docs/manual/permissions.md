@@ -1,10 +1,12 @@
 # 审批与回答问题
 
+[简体中文](permissions.md) · [English](en/permissions.md)
+
 [返回功能目录](index.md)
 
 agent 请求执行操作或需要选择时，会在会话内显示交互卡片。先看内容，再选操作。
 
-<a name="approve"></a>
+<a name="approve" id="approve"></a>
 
 ## 批准或拒绝工具操作
 
@@ -18,7 +20,7 @@ agent 请求执行操作或需要选择时，会在会话内显示交互卡片�
 
 任务详情中的批准快捷入口可能有“本会话内此工具不再询问”的范围说明，请按当前按钮旁的提示判断授权范围。
 
-<a name="answer"></a>
+<a name="answer" id="answer"></a>
 
 ## 回答 agent 的选择题
 

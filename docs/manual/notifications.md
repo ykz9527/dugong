@@ -1,10 +1,12 @@
 # 通知与离线使用
 
+[简体中文](notifications.md) · [English](en/notifications.md)
+
 [返回功能目录](index.md)
 
 通知帮助你知道 agent 在等你；实际执行仍在 hub 和机器上进行。
 
-<a name="browser"></a>
+<a name="browser" id="browser"></a>
 
 ## 启用浏览器通知
 
@@ -17,7 +19,7 @@
 
 截图展示移动任务列表；系统通知授权弹窗随设备变化，不是固定的 dugong 按钮。通知不是实时执行状态的唯一依据，点开后应核对会话当前状态。
 
-<a name="offline"></a>
+<a name="offline" id="offline"></a>
 
 ## 离线与多端使用
 

@@ -1,10 +1,12 @@
 # 工作区用户与目录范围
 
+[简体中文](users.md) · [English](en/users.md)
+
 [返回功能目录](index.md)
 
 工作区用户用于组织任务范围、个人助手与相关设置；登录 token/namespace 是另一层访问机制。
 
-<a name="switch"></a>
+<a name="switch" id="switch"></a>
 
 ## 切换当前用户
 
@@ -16,7 +18,7 @@
 
 看不到任务时先检查用户与目录配置，不要立即重新创建相同任务。
 
-<a name="manage"></a>
+<a name="manage" id="manage"></a>
 
 ## 添加、改名与删除用户
 
@@ -29,7 +31,7 @@
 
 用户管理会影响任务归属视图和助手使用范围，不是创建操作系统账户。
 
-<a name="paths"></a>
+<a name="paths" id="paths"></a>
 
 ## 配置用户可见目录
 

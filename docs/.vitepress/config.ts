@@ -20,12 +20,45 @@ export default defineConfig({
     logo: { light: '/logo.svg', dark: '/logo-dark.svg' },
 
     nav: [
-      { text: '图文手册', link: '/manual/' },
+      { text: 'Manual / 图文手册', items: [
+        { text: 'English', link: '/manual/en/' },
+        { text: '简体中文', link: '/manual/' }
+      ] },
       { text: 'Quick start', link: '/guide/quick-start' },
       { text: 'Releases', link: `${repo}/releases` }
     ],
 
     sidebar: [
+      {
+        text: 'Illustrated manual (English)',
+        collapsed: true,
+        items: [
+          { text: 'Feature directory', link: '/manual/en/' },
+          { text: "Getting started and navigation", link: '/manual/en/start' },
+          { text: "Tasks, status and lifecycle", link: '/manual/en/tasks' },
+          { text: "Worktrees, branches and pull requests", link: '/manual/en/git' },
+          { text: "Recurring tasks and scheduled messages", link: '/manual/en/schedules' },
+          { text: "Create and manage sessions", link: '/manual/en/sessions' },
+          { text: "Write messages and read results", link: '/manual/en/messages' },
+          { text: "Approve operations and answer questions", link: '/manual/en/permissions' },
+          { text: "Scratchlist and message queue", link: '/manual/en/scratchlist' },
+          { text: "Copy, export and share images", link: '/manual/en/sharing' },
+          { text: "Task assistant, memory and questions", link: '/manual/en/assistant' },
+          { text: "Workspace users and directory scope", link: '/manual/en/users' },
+          { text: "Browse files, search and inspect diffs", link: '/manual/en/files' },
+          { text: "Remote terminal and command input", link: '/manual/en/terminal' },
+          { text: "Settings: language and session summaries", link: '/manual/en/settings-general' },
+          { text: "Settings: appearance, fonts and session display", link: '/manual/en/settings-display' },
+          { text: "Settings: input behavior and toolbar", link: '/manual/en/settings-chat' },
+          { text: "Settings: dictation and voice assistant", link: '/manual/en/settings-voice' },
+          { text: "Settings: machine names and connections", link: '/manual/en/settings-machines' },
+          { text: "Settings: Git hosting credentials", link: '/manual/en/settings-git' },
+          { text: "Settings: storage usage", link: '/manual/en/settings-storage' },
+          { text: "Settings: token usage", link: '/manual/en/settings-usage' },
+          { text: "Settings: versions and project links", link: '/manual/en/settings-about' },
+          { text: "Notifications and offline use", link: '/manual/en/notifications' },
+        ]
+      },
       {
         text: '功能图文手册',
         collapsed: false,

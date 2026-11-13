@@ -1,10 +1,12 @@
 # 周期任务与定时消息
 
+[简体中文](schedules.md) · [English](en/schedules.md)
+
 [返回功能目录](index.md)
 
 两种定时入口用途不同：任务详情的“定时运行”安排整个任务；输入栏的“定时发送”安排一条消息。
 
-<a name="task"></a>
+<a name="task" id="task"></a>
 
 ## 设置周期任务
 
@@ -27,7 +29,7 @@
 
 恢复失败可能回退到新会话，应检查运行记录。hub 需要在线，机器也必须能执行任务。
 
-<a name="manage"></a>
+<a name="manage" id="manage"></a>
 
 ## 暂停、恢复和立即运行
 
@@ -41,7 +43,7 @@
 
 若计划被自动暂停，先读失败原因并修复机器/agent 问题，再恢复，避免重复失败。
 
-<a name="message"></a>
+<a name="message" id="message"></a>
 
 ## 安排一条消息稍后发送
 

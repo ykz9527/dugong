@@ -19,7 +19,7 @@
   </p>
 </div>
 
-Browse the [illustrated feature manual (中文)](docs/manual/index.md) for clickable controls, screenshots, and step-by-step instructions.
+Browse the illustrated feature manual in [English](docs/manual/en/index.md) or [简体中文](docs/manual/index.md) for clickable controls, screenshots, and step-by-step instructions.
 
 <p align="center">
   <picture>

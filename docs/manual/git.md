@@ -1,10 +1,12 @@
 # worktree、分支与 PR
 
+[简体中文](git.md) · [English](en/git.md)
+
 [返回功能目录](index.md)
 
 使用 worktree 隔离任务代码，在任务详情查看分支和 PR。
 
-<a name="isolation"></a>
+<a name="isolation" id="isolation"></a>
 
 ## 选择隔离方式
 
@@ -16,7 +18,7 @@
 
 简单模式直接使用原目录。多人或多任务同时修改同一目录时，Git 状态会相互影响。worktree 隔离工作文件，但不会自动隔离数据库、端口或外部服务。
 
-<a name="pr"></a>
+<a name="pr" id="pr"></a>
 
 ## 打开和刷新 PR
 
@@ -29,7 +31,7 @@
 
 需要可用的 Git remote、可推送分支及托管平台凭据。凭据设置见 [Git 托管](settings-git.md)。详情中的 PR 状态不替代代码平台的最终合并检查；这里没有承诺自动合并。
 
-<a name="history"></a>
+<a name="history" id="history"></a>
 
 ## 查看运行历史
 

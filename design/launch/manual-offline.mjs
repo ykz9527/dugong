@@ -21,7 +21,8 @@ for (const slug of order) {
     const file = source + '/' + slug + '.md'
     let text = readFileSync(file, 'utf8')
     const title = text.match(/^# (.+)$/m)?.[1] ?? slug
-    text = text.replace(/<a name="([\w-]+)"><\/a>/g, (_, anchor) => `<a id="${slug}--${anchor}"></a>`)
+    text = text.replace(/<a name="([\w-]+)"(?: id="[\w-]+")?><\/a>/g, (_, anchor) => `<a id="${slug}--${anchor}"></a>`)
+    text = text.replace(/\]\(en\/([a-z-]+)\.md(#[\w-]+)?\)/g, (_, target, anchor = '') => `](https://github.com/ykz9527/dugong/blob/main/docs/manual/en/${target}.md${anchor})`)
     text = text.replace(/\]\(([a-z-]+)\.md(?:#([\w-]+))?\)/g, (_, target, anchor) => `](#${target}${anchor ? '--' + anchor : ''})`)
     text = text.replace(/\]\(\.\.\/([^)]*)\)/g, (_, target) => `](https://github.com/ykz9527/dugong/blob/main/docs/${target})`)
     nav += `<a href="#${slug}">${title}</a>`

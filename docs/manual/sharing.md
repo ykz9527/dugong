@@ -1,10 +1,12 @@
 # 复制、导出与图片分享
 
+[简体中文](sharing.md) · [English](en/sharing.md)
+
 [返回功能目录](index.md)
 
 短内容用复制；需要展示一轮对话时用图片分享；需要保存整段会话时用会话导出。
 
-<a name="image"></a>
+<a name="image" id="image"></a>
 
 ## 把一轮对话分享成图片
 
@@ -17,7 +19,7 @@
 
 分享预览会处理部分工具输出与交互控件，不是浏览器原样截图。请以预览和导出的图片为准。
 
-<a name="export"></a>
+<a name="export" id="export"></a>
 
 ## 保存整段会话
 

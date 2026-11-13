@@ -1,10 +1,12 @@
 # 文件浏览、搜索与差异
 
+[简体中文](files.md) · [English](en/files.md)
+
 [返回功能目录](index.md)
 
 从会话的文件入口检查实际项目文件；操作的是执行机器上的工作目录。
 
-<a name="changes"></a>
+<a name="changes" id="changes"></a>
 
 ## 查看暂存与未暂存改动
 
@@ -17,7 +19,7 @@
 
 文件列表反映 Git 工作区，不是“本次回答生成的文件清单”。简单模式下也可能包含其他任务或人工改动。
 
-<a name="browse"></a>
+<a name="browse" id="browse"></a>
 
 ## 目录浏览、搜索和排序
 
@@ -30,7 +32,7 @@
 
 搜索结果与文件可读范围由当前工作目录和服务端能力决定。
 
-<a name="preview"></a>
+<a name="preview" id="preview"></a>
 
 ## 阅读源码、Markdown 和 diff
 

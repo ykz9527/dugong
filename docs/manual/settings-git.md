@@ -1,10 +1,12 @@
 # 设置：Git 托管凭据
 
+[简体中文](settings-git.md) · [English](en/settings-git.md)
+
 [返回功能目录](index.md)
 
 这里配置 hub 用于任务分支推送和 PR 的托管凭据。不会自动替代机器上所有 Git/SSH 配置。
 
-<a name="add"></a>
+<a name="add" id="add"></a>
 
 ## 添加主机与 token
 
@@ -17,7 +19,7 @@
 
 主机与仓库 remote 必须对应。不要填写整个仓库 URL 代替主机名。
 
-<a name="remove"></a>
+<a name="remove" id="remove"></a>
 
 ## 检查、替换和移除凭据
 

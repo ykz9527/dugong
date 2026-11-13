@@ -1,10 +1,12 @@
 # 消息输入、附件与阅读
 
+[简体中文](messages.md) · [English](en/messages.md)
+
 [返回功能目录](index.md)
 
 输入框控制本次会话；工具条可以在设置中调整，某个按钮不见时先检查隐藏工具。
 
-<a name="send"></a>
+<a name="send" id="send"></a>
 
 ## 输入、发送与中止
 
@@ -17,7 +19,7 @@
 
 中止不会自动撤销 agent 已写入的文件。发送后先看消息的投递状态，避免在连接不稳时重复提交相同任务。
 
-<a name="attachments"></a>
+<a name="attachments" id="attachments"></a>
 
 ## 添加附件、路径与引用
 
@@ -30,7 +32,7 @@
 
 附件的读取能力取决于 agent。包含敏感数据的文件应先检查；文件名出现在输入框不代表已经完成上传。
 
-<a name="agent-options"></a>
+<a name="agent-options" id="agent-options"></a>
 
 ## 模型、推理强度和权限
 
@@ -49,7 +51,7 @@
 
 权限模式不是模型能力开关。不要仅为了少点按钮就放开所有操作。
 
-<a name="read"></a>
+<a name="read" id="read"></a>
 
 ## 查看工具结果、代码和历史
 

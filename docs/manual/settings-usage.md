@@ -1,10 +1,12 @@
 # 设置：Token 用量
 
+[简体中文](settings-usage.md) · [English](en/settings-usage.md)
+
 [返回功能目录](index.md)
 
 Token 用量按 hub 已采集的用量记录汇总，供所有者查看；不是服务商的最终账单。
 
-<a name="range"></a>
+<a name="range" id="range"></a>
 
 ## 选择时间范围
 
@@ -16,7 +18,7 @@ Token 用量按 hub 已采集的用量记录汇总，供所有者查看；不是
 
 页面按浏览器时区请求汇总。记录为空时先确认是否有受支持的用量事件被采集。
 
-<a name="breakdown"></a>
+<a name="breakdown" id="breakdown"></a>
 
 ## 理解缓存与分类统计
 

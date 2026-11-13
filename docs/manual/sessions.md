@@ -1,10 +1,12 @@
 # 会话创建、切换与管理
 
+[简体中文](sessions.md) · [English](en/sessions.md)
+
 [返回功能目录](index.md)
 
 有任务时优先从任务进入会话；也可使用独立会话入口。不同 agent 和 runner 版本提供的选项不同。
 
-<a name="new"></a>
+<a name="new" id="new"></a>
 
 ## 创建独立会话
 
@@ -17,7 +19,7 @@
 
 机器旁显示“需要更新”时，先升级该机器上的 runner。某些选项会按 agent 能力隐藏，不能仅靠前端选择启用机器尚未支持的功能。
 
-<a name="switch"></a>
+<a name="switch" id="switch"></a>
 
 ## 切换会话与恢复工作
 
@@ -30,7 +32,7 @@
 
 浏览旧消息通常不要求 agent 正在运行，继续执行、文件和终端操作则可能需要在线连接。
 
-<a name="menu"></a>
+<a name="menu" id="menu"></a>
 
 ## 会话菜单与导出
 
