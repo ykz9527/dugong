@@ -19,6 +19,8 @@
   </p>
 </div>
 
+按界面入口查操作方法：[功能图文手册](docs/manual/index.md)，包含功能目录、截图和逐步说明。
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshot-desktop-dark.png">

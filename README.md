@@ -19,6 +19,8 @@
   </p>
 </div>
 
+Browse the [illustrated feature manual (中文)](docs/manual/index.md) for clickable controls, screenshots, and step-by-step instructions.
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshot-desktop-dark.png">

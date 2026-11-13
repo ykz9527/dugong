@@ -1,5 +1,7 @@
 # dugong 上手手册
 
+需要按按钮查用法，请先看 [功能图文手册](manual/index.md)。本页保留部署与维护说明。
+
 从零开始把 dugong 跑起来、用起来，以及踩过的坑。读完能独立操作。
 
 英文 README 在 [README.md](../README.md)，改动清单在 [divergence.md](divergence.md)。
