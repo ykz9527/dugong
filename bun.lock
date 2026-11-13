@@ -1333,6 +1333,16 @@
 
     "@ykz9527/dugong": ["@ykz9527/dugong@workspace:cli"],
 
+    "@ykz9527/dugong-darwin-arm64": ["@ykz9527/dugong-darwin-arm64@0.30.0", "", { "os": "darwin", "cpu": "arm64", "bin": { "dugong": "bin/dugong" } }, "sha512-dha48FBTd2BFPWdMFKHnUyDUClV8iXJ0b5OClzQtPrfLeSgGR/1nixi6mQWcO4TUdJK35sQFQeh63Qg6uLMOSA=="],
+
+    "@ykz9527/dugong-darwin-x64": ["@ykz9527/dugong-darwin-x64@0.30.0", "", { "os": "darwin", "cpu": "x64", "bin": { "dugong": "bin/dugong" } }, "sha512-fEKajo64Z0WwC54vxYKhZ8v0FsM3OKFl51T74k0rsQkHskCxkj+jwzHWD34eQkzk71a4C6bKGwl96Ly9sEdxwA=="],
+
+    "@ykz9527/dugong-linux-arm64": ["@ykz9527/dugong-linux-arm64@0.30.0", "", { "os": "linux", "cpu": "arm64", "bin": { "dugong": "bin/dugong" } }, "sha512-eItbmnlOlbCn0IXnjGlcHje/YOOWfo1HfXa/CqVX9BZL6Pq+5MB1l6wqGkzUviZJ1WbWNwvCqRuzesW+U8Gmww=="],
+
+    "@ykz9527/dugong-linux-x64": ["@ykz9527/dugong-linux-x64@0.30.0", "", { "os": "linux", "cpu": "x64", "bin": { "dugong": "bin/dugong" } }, "sha512-N61b/iz+aCajHQWgzRK5JQzxUAAN++uK0zQLHDTB9MJmjgGBdsTOG4IfDyCYwB5TsBbfjmdDyiEB1UqILN+2LQ=="],
+
+    "@ykz9527/dugong-win32-x64": ["@ykz9527/dugong-win32-x64@0.30.0", "", { "os": "win32", "cpu": "x64", "bin": { "dugong": "bin/dugong.exe" } }, "sha512-+np2SJiMqBPdb6sCb4DwsBhBuk3agPT+t+22y090SMV01YHFHc+pYC04ADzz20bNPXYp0+WpDs2/Sd4HqcHW+Q=="],
+
     "abort-controller": ["abort-controller@3.0.0", "", { "dependencies": { "event-target-shim": "^5.0.0" } }, "sha512-h8lQ8tacZYnR3vNQTgibj+tODHI5/+l06Au2Pcriv/Gmet0eaj4TwWH41sO9wnHDiQsEj19q0drzdWdeAHtweg=="],
 
     "abstract-logging": ["abstract-logging@2.0.1", "", {}, "sha512-2BjRTZxTPvheOvGbBslFSYOUkr+SjPtOnrLP33f+VIWLzezQpZcqVg7ja3L4dBXmzzgwT+a029jRx5PCi3JuiA=="],
