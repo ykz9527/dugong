@@ -149,12 +149,12 @@ export function LoginPrompt(props: LoginPromptProps) {
                         {isBindMode ? title : t('login.badge')}
                     </p>
 
-                    {/* Wordmark hung on the rule: "pit" ends just left of it, "wall" starts just right of it */}
+                    {/* Wordmark hung on the rule: "du" ends just left of it, "gong" starts just right of it */}
                     <h1 aria-label={t('login.title')} className="pw-display whitespace-nowrap text-[clamp(84px,min(15vw,26vh),240px)]">
                         <span className="inline-block w-[calc(var(--s3)-var(--s4))] text-right">
-                            <span className="pw-post-in inline-block" style={{ '--post-from': '44px' } as CSSProperties}>pit</span>
+                            <span className="pw-post-in inline-block" style={{ '--post-from': '44px' } as CSSProperties}>du</span>
                         </span>
-                        <span className="pw-post-in ml-[calc(var(--s4)*2)] inline-block" style={{ '--post-from': '-44px', '--i': 1 } as CSSProperties}>wall</span>
+                        <span className="pw-post-in ml-[calc(var(--s4)*2)] inline-block" style={{ '--post-from': '-44px', '--i': 1 } as CSSProperties}>gong</span>
                     </h1>
 
                     {/* Form right of the rule */}
