@@ -1,6 +1,6 @@
 # dugong hub
 
-Telegram bot + HTTP API + realtime updates for hapi hub.
+HTTP API, realtime updates, task orchestration and Telegram bot for the dugong hub.
 
 ## What it does
 
@@ -43,7 +43,7 @@ Dictation and voice-assistant provider keys can also be added from **Settings â†
 - `DUGONG_LISTEN_HOST` - HTTP bind address (default: 127.0.0.1).
 - `DUGONG_LISTEN_PORT` - HTTP port (default: 3006).
 - `CORS_ORIGINS` - Comma-separated origins, or `*`.
-- `DUGONG_HOME` - Data directory (default: ~/.hapi).
+- `DUGONG_HOME` - Data directory (default: ~/.dugong).
 - `DB_PATH` - SQLite database path (default: DUGONG_HOME/dugong.db; an older `hapi.db` there is renamed on start).
 - `TELEGRAM_NOTIFICATION` - Enable/disable Telegram notifications (default: true).
 - `DUGONG_RELAY_API` - Relay API domain (default: relay.hapi.run).
@@ -60,10 +60,10 @@ export TELEGRAM_BOT_TOKEN="..."
 export CLI_API_TOKEN="shared-secret"
 export DUGONG_PUBLIC_URL="https://your-domain.example"
 
-hapi hub
+dugong hub
 ```
 
-`hapi server` remains supported as an alias.
+`dugong server` remains supported as an alias.
 
 If you only need web + CLI, you can omit TELEGRAM_BOT_TOKEN.
 To enable Telegram, set TELEGRAM_BOT_TOKEN and DUGONG_PUBLIC_URL, start the hub, open `/app`
@@ -113,6 +113,39 @@ everything not running under them. Anyone in the namespace can read and edit the
 - `POST /api/workspace-users` - Create one (`{ name, paths }`).
 - `PATCH /api/workspace-users/:id` - Rename or replace the path set.
 - `DELETE /api/workspace-users/:id` - Remove one. Never touches their sessions or tasks.
+
+### Tasks (`src/web/routes/tasks.ts`)
+
+- `GET /api/tasks` - List tasks (`?workspaceUser=<id>` filters like sessions).
+- `POST /api/tasks` - Create a task; with `start` the orchestrator launches it on the chosen machine.
+- `POST /api/tasks/adopt` - Turn an existing Claude or Codex session into a task.
+- `GET /api/tasks/:id`, `PATCH /api/tasks/:id`, `DELETE /api/tasks/:id` - Read, edit, delete. Deleting a task whose agent is still running needs `?stopRun=true` (otherwise 409).
+- `POST /api/tasks/:id/move` - Change the status column only; never starts or stops an agent.
+- `POST /api/tasks/:id/start`, `POST /api/tasks/:id/cancel` - Start a run, stop the running one.
+- `POST /api/tasks/:id/archive`, `POST /api/tasks/:id/unarchive` - Archive (optionally stopping the run) and restore.
+- `GET /api/tasks/:id/runs` - Run history.
+- `POST /api/tasks/:id/pr`, `POST /api/tasks/:id/pr/refresh`, `DELETE /api/tasks/:id/pr` - Open, refresh, or forget the task's pull request.
+
+### Task schedules (`src/web/routes/taskSchedules.ts`)
+
+- `GET /api/schedules` - All schedules in the namespace.
+- `GET /api/tasks/:id/schedule`, `PUT /api/tasks/:id/schedule`, `DELETE /api/tasks/:id/schedule` - Read, set, remove a task's schedule.
+- `POST /api/tasks/:id/schedule/{pause,resume,run-now}` - Pause, resume, run once now.
+- `GET /api/tasks/:id/schedule/slots` - Upcoming run times.
+
+### Task assistant (`src/web/routes/assistant.ts`)
+
+- `GET /api/assistant/session`, `PUT /api/assistant/agent` - The workspace user's assistant session and its agent.
+- `POST /api/assistant/messages` - Send a message, optionally about one task.
+- `GET/POST /api/assistant/memories`, `PATCH/DELETE /api/assistant/memories/:id`, `POST /api/assistant/memories/:id/undo` - Memory.
+- `GET /api/assistant/grants`, `DELETE /api/assistant/grants/:id` - Standing grants.
+- `GET /api/assistant/questions`, `POST /api/assistant/questions/:id/answer` - Decisions the assistant made and asks about afterwards.
+
+### Settings, git hosts, storage
+
+- `GET/PUT /api/hub-settings` - Hub-wide settings (`src/web/routes/hubSettings.ts`).
+- `GET/PUT /api/git-host/tokens`, `DELETE /api/git-host/tokens/:host` - Tokens used to open pull requests (`src/web/routes/gitHost.ts`).
+- `GET /api/storage/sqlite` - Database, WAL and SHM sizes (`src/web/routes/storage.ts`).
 
 ### Messages (`src/web/routes/messages.ts`)
 
@@ -294,6 +327,6 @@ The web UI can be hosted separately from the hub (for example on GitHub Pages or
 
 1. Build and deploy `web/dist` from the repo root.
 2. Set `CORS_ORIGINS` (or `DUGONG_PUBLIC_URL`) to the static host origin.
-3. Open the static site, click the Hub button on the login screen, and enter the hapi hub origin.
+3. Open the static site, click the Hub button on the login screen, and enter the dugong hub origin.
 
 Leaving the hub override empty preserves the default same-origin behavior when the hub serves the web assets directly.
