@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApiClient } from '@/api/client'
@@ -204,6 +204,24 @@ describe('QueuedMessagesBar layout', () => {
         expect(content).toHaveClass('pt-2', 'pb-0')
         expect(content).not.toHaveClass('py-2')
     })
+
+    it('labels a message the hub has not confirmed yet as sending, not queued', () => {
+        renderQueuedMessage()
+        expect(screen.getByText('queuedMessages.title')).toBeInTheDocument()
+        cleanup()
+
+        mocks.messageWindowState = {
+            messages: [{ ...makeQueuedMessage(), id: 'local-1', localId: 'local-1', status: 'sending' }]
+        }
+        render(
+            <QueryClientProvider client={new QueryClient()}>
+                <QueuedMessagesBar sessionId="session-1" api={null} pendingSchedule={null} pendingScheduleRevision={0} onEdit={vi.fn()} canSteer={false} />
+            </QueryClientProvider>
+        )
+        expect(screen.getByText('queuedMessages.sendingTitle')).toBeInTheDocument()
+        expect(screen.getByText('queuedMessages.sending')).toBeInTheDocument()
+        expect(screen.queryByText('queuedMessages.title')).not.toBeInTheDocument()
+    })
 })
 
 describe('QueuedMessagesBar edit restore', () => {
@@ -211,7 +229,7 @@ describe('QueuedMessagesBar edit restore', () => {
         const scheduledAt = Date.now() + 60_000
         const { onEdit } = renderQueuedMessage(scheduledAt)
 
-        fireEvent.click(screen.getByRole('button', { name: 'Edit queued message' }))
+        fireEvent.click(screen.getByRole('button', { name: 'queuedMessages.edit' }))
         expect(mocks.resolveCancel).not.toBeNull()
 
         // The user starts a new draft while DELETE /messages/:id is still pending.
@@ -232,7 +250,7 @@ describe('QueuedMessagesBar edit restore', () => {
         const scheduledAt = Date.now() + 60_000
         const { onEdit, rerender } = renderQueuedMessage(scheduledAt)
 
-        fireEvent.click(screen.getByRole('button', { name: 'Edit queued message' }))
+        fireEvent.click(screen.getByRole('button', { name: 'queuedMessages.edit' }))
         // The user changes only the clock selection while DELETE /messages/:id is pending.
         rerender({ type: 'preset', preset: '+30m' }, 1)
         await resolveCancel({ status: 'cancelled' })
@@ -251,7 +269,7 @@ describe('QueuedMessagesBar edit restore', () => {
         const scheduledAt = Date.now() + 60_000
         const { onEdit, rerender } = renderQueuedMessage(scheduledAt)
 
-        fireEvent.click(screen.getByRole('button', { name: 'Edit queued message' }))
+        fireEvent.click(screen.getByRole('button', { name: 'queuedMessages.edit' }))
         rerender({ type: 'preset', preset: '+30m' }, 1)
         rerender(null, 2)
         await resolveCancel({ status: 'cancelled' })
@@ -270,7 +288,7 @@ describe('QueuedMessagesBar edit restore', () => {
         const scheduledAt = Date.now() + 60_000
         const { onEdit } = renderQueuedMessage(scheduledAt)
 
-        fireEvent.click(screen.getByRole('button', { name: 'Edit queued message' }))
+        fireEvent.click(screen.getByRole('button', { name: 'queuedMessages.edit' }))
         await resolveCancel({ status: 'cancelled' })
 
         expect(mocks.composerSetText).toHaveBeenCalledWith('Queued request')
@@ -285,7 +303,7 @@ describe('QueuedMessagesBar edit restore', () => {
         const scheduledAt = Date.now() + 60_000
         const { onEdit, rerender } = renderQueuedMessage(scheduledAt, { type: 'preset', preset: '+5m' })
 
-        fireEvent.click(screen.getByRole('button', { name: 'Edit queued message' }))
+        fireEvent.click(screen.getByRole('button', { name: 'queuedMessages.edit' }))
         rerender({ type: 'preset', preset: '+5m' })
         await resolveCancel({ status: 'cancelled' })
 
@@ -317,13 +335,13 @@ describe('QueuedMessagesBar edit restore', () => {
             </QueryClientProvider>
         )
 
-        const editButtons = screen.getAllByRole('button', { name: 'Edit queued message' })
-        const cancelButtons = screen.getAllByRole('button', { name: 'Cancel queued message' })
+        const editButtons = screen.getAllByRole('button', { name: 'queuedMessages.edit' })
+        const cancelButtons = screen.getAllByRole('button', { name: 'queuedMessages.cancel' })
         // QueuedMessagesBar orders immediate rows first, so the scheduled edit is second.
         fireEvent.click(editButtons[1]!)
 
         await waitFor(() => {
-            for (const button of [...screen.getAllByRole('button', { name: 'Edit queued message' }), ...screen.getAllByRole('button', { name: 'Cancel queued message' })]) {
+            for (const button of [...screen.getAllByRole('button', { name: 'queuedMessages.edit' }), ...screen.getAllByRole('button', { name: 'queuedMessages.cancel' })]) {
                 expect(button).toBeDisabled()
             }
         })
@@ -343,7 +361,7 @@ describe('QueuedMessagesBar edit restore', () => {
         const scheduledAt = Date.now() + 60_000
         const { unmount } = renderQueuedMessage(scheduledAt)
 
-        fireEvent.click(screen.getByRole('button', { name: 'Edit queued message' }))
+        fireEvent.click(screen.getByRole('button', { name: 'queuedMessages.edit' }))
         unmount()
         await resolveCancel({ status: 'cancelled' })
 
@@ -368,15 +386,15 @@ describe('QueuedMessagesBar edit restore', () => {
         const scheduledAt = Date.now() + 60_000
         const { unmount } = renderQueuedMessage(scheduledAt)
 
-        fireEvent.click(screen.getByRole('button', { name: 'Edit queued message' }))
+        fireEvent.click(screen.getByRole('button', { name: 'queuedMessages.edit' }))
         unmount()
         const { onEdit } = renderQueuedMessage(scheduledAt)
 
         await waitFor(() => {
-            expect(screen.getByRole('button', { name: 'Edit queued message' })).toBeDisabled()
-            expect(screen.getByRole('button', { name: 'Cancel queued message' })).toBeDisabled()
+            expect(screen.getByRole('button', { name: 'queuedMessages.edit' })).toBeDisabled()
+            expect(screen.getByRole('button', { name: 'queuedMessages.cancel' })).toBeDisabled()
         })
-        fireEvent.click(screen.getByRole('button', { name: 'Cancel queued message' }))
+        fireEvent.click(screen.getByRole('button', { name: 'queuedMessages.cancel' }))
         expect(mocks.mutateAsync).toHaveBeenCalledTimes(1)
 
         await resolveCancel({ status: 'cancelled' })
@@ -394,18 +412,18 @@ describe('QueuedMessagesBar edit restore', () => {
         const scheduledAt = Date.now() + 60_000
         const { unmount } = renderQueuedMessage(scheduledAt)
 
-        fireEvent.click(screen.getByRole('button', { name: 'Edit queued message' }))
+        fireEvent.click(screen.getByRole('button', { name: 'queuedMessages.edit' }))
         unmount()
         const { onEdit } = renderQueuedMessage(scheduledAt)
         await resolveCancel({ status: 'cancelled' })
 
         // The mutation token has ended, but the unconsumed recovery keeps Q2 busy.
-        expect(screen.getByRole('button', { name: 'Edit queued message' })).toBeDisabled()
-        fireEvent.click(screen.getByRole('button', { name: 'Cancel queued message' }))
+        expect(screen.getByRole('button', { name: 'queuedMessages.edit' })).toBeDisabled()
+        fireEvent.click(screen.getByRole('button', { name: 'queuedMessages.cancel' }))
         expect(mocks.mutateAsync).toHaveBeenCalledTimes(1)
 
         raf.flushPending()
-        await waitFor(() => expect(screen.getByRole('button', { name: 'Edit queued message' })).not.toBeDisabled())
+        await waitFor(() => expect(screen.getByRole('button', { name: 'queuedMessages.edit' })).not.toBeDisabled())
         expect(onEdit).toHaveBeenCalledWith({
             text: 'Queued request',
             pendingSchedule: { type: 'absolute', ms: scheduledAt },
@@ -417,7 +435,7 @@ describe('QueuedMessagesBar edit restore', () => {
         const scheduledAt = Date.now() + 60_000
         const first = renderQueuedMessage(scheduledAt)
 
-        fireEvent.click(screen.getByRole('button', { name: 'Edit queued message' }))
+        fireEvent.click(screen.getByRole('button', { name: 'queuedMessages.edit' }))
         first.unmount()
         const second = renderQueuedMessage(scheduledAt)
         await resolveCancel({ status: 'cancelled' })
@@ -442,7 +460,7 @@ describe('QueuedMessagesBar edit restore', () => {
         const scheduledAt = Date.now() + 60_000
         const { unmount } = renderQueuedMessage(scheduledAt)
 
-        fireEvent.click(screen.getByRole('button', { name: 'Edit queued message' }))
+        fireEvent.click(screen.getByRole('button', { name: 'queuedMessages.edit' }))
         unmount()
         await resolveCancel({ status: 'cancelled' })
         mocks.composerText = 'Current draft wins'
@@ -466,7 +484,7 @@ describe('QueuedMessagesBar edit restore', () => {
     it('keeps the already-invoked toast behavior', async () => {
         const { onEdit } = renderQueuedMessage()
 
-        fireEvent.click(screen.getByRole('button', { name: 'Edit queued message' }))
+        fireEvent.click(screen.getByRole('button', { name: 'queuedMessages.edit' }))
         await resolveCancel({ status: 'invoked' })
 
         expect(mocks.composerSetText).not.toHaveBeenCalled()
@@ -482,7 +500,7 @@ describe('QueuedMessagesBar edit restore', () => {
     it('does not restore an edit when cancel fails', async () => {
         const { onEdit } = renderQueuedMessage(Date.now() + 60_000)
 
-        fireEvent.click(screen.getByRole('button', { name: 'Edit queued message' }))
+        fireEvent.click(screen.getByRole('button', { name: 'queuedMessages.edit' }))
         await act(async () => {
             mocks.rejectCancel?.(new Error('network failed'))
             await Promise.resolve()

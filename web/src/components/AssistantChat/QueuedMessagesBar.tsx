@@ -336,7 +336,11 @@ export function QueuedMessagesBar({
         >
             <div className="px-3 pb-0 pt-2 text-sm text-[var(--app-fg)]">
                 <div className="pw-eyebrow mb-1.5 text-[var(--app-hint)]">
-                    <span>Queued</span>
+                    {/* A row only counts as queued once the hub has it; until
+                        then it is still being sent. */}
+                    <span>{queued.every((msg) => msg.status === 'sending')
+                        ? t('queuedMessages.sendingTitle')
+                        : t('queuedMessages.title')}</span>
                 </div>
                 <ul
                     className="flex max-h-32 flex-col overflow-y-auto border-b border-[var(--app-border)] sm:max-h-48"
@@ -504,6 +508,11 @@ export function QueuedMessagesBar({
                                             {text}
                                         </span>
                                     ) : null}
+                                    {msg.status === 'sending' ? (
+                                        <div className="mt-1 text-xs text-[var(--app-hint)]" role="status">
+                                            {t('queuedMessages.sending')}
+                                        </div>
+                                    ) : null}
                                     {msg.deliveryState === 'indeterminate' ? (
                                         <div className="mt-1 text-xs text-[var(--app-badge-warning-text)]">
                                             {t('queuedMessages.steerOutcomeUnknown')}
@@ -563,7 +572,8 @@ export function QueuedMessagesBar({
                                     ) : null}
                                     <button
                                         type="button"
-                                        aria-label="Edit queued message"
+                                        aria-label={t('queuedMessages.edit')}
+                                        title={t('queuedMessages.edit')}
                                         disabled={!canEdit}
                                         onClick={handleEdit}
                                         onMouseDown={(e) => e.preventDefault()}
@@ -586,7 +596,8 @@ export function QueuedMessagesBar({
                                     </button>
                                     <button
                                         type="button"
-                                        aria-label="Cancel queued message"
+                                        aria-label={t('queuedMessages.cancel')}
+                                        title={t('queuedMessages.cancel')}
                                         disabled={!canCancel}
                                         onClick={handleCancel}
                                         onMouseDown={(e) => e.preventDefault()}
