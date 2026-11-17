@@ -108,7 +108,7 @@ function AssistantFab() {
                 {fue.status !== 'acknowledged' ? <FueDot pulsing={fue.status === 'unseen'} /> : null}
             </button>
             {fue.status === 'engaging' ? (
-                <FueCallout title={t('assistant.fue.title')} body={t('assistant.fue.body')} onDismiss={fue.dismiss} anchorRef={buttonRef} />
+                <FueCallout title={t('assistant.fue.title')} body={t('assistant.fue.body')} onDismiss={fue.dismiss} dismissLabel={t('fue.gotIt')} closeAriaLabel={t('fue.closeAriaLabel')} anchorRef={buttonRef} />
             ) : null}
         </>
     )
@@ -138,7 +138,7 @@ export function AssistantHeaderButton(props: { className: (active: boolean) => s
                 {fue.status !== 'acknowledged' ? <FueDot pulsing={fue.status === 'unseen'} className="absolute -right-0.5 -top-0.5" /> : null}
             </button>
             {fue.status === 'engaging' ? (
-                <FueCallout title={t('assistant.fue.title')} body={t('assistant.fue.body')} onDismiss={fue.dismiss} anchorRef={buttonRef} />
+                <FueCallout title={t('assistant.fue.title')} body={t('assistant.fue.body')} onDismiss={fue.dismiss} dismissLabel={t('fue.gotIt')} closeAriaLabel={t('fue.closeAriaLabel')} anchorRef={buttonRef} />
             ) : null}
         </>
     )

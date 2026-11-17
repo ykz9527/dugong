@@ -317,6 +317,20 @@ describe('TaskDetail', () => {
         await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     })
 
+    it('names a running task once rather than "Running · running"', async () => {
+        renderPanel(makeApi(makeTask({ column: 'running', lastRunStatus: 'running' })))
+        const panel = await openDetail()
+
+        expect(within(panel).getByText('Running', { selector: 'p.pw-eyebrow' })).toBeTruthy()
+    })
+
+    it('still adds the run state when it says something the column does not', async () => {
+        renderPanel(makeApi(makeTask({ column: 'review', lastRunStatus: 'running' })))
+        const panel = await openDetail()
+
+        expect(within(panel).getByText('Review · running', { selector: 'p.pw-eyebrow' })).toBeTruthy()
+    })
+
     it('marks the lifecycle step, and shows a blocked card as stuck at Running', async () => {
         renderPanel(makeApi(makeTask({ column: 'blocked' })))
         const panel = await openDetail()

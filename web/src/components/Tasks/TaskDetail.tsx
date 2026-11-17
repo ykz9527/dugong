@@ -216,6 +216,9 @@ export function TaskDetail(props: {
     // Reviewed tasks still own a live run, so the archive that ends one is the
     // common case and has to ask first.
     const archiveStopsRun = task.lastRunStatus === 'running'
+    // A running task's live run would read "Running · running"; say it once.
+    const columnLabel = t(`board.column.${task.column}`)
+    const runLabel = task.lastRunStatus ? t(`board.detail.run.${task.lastRunStatus}`) : ''
     // And the delete that ends one: outside `running` there is no Cancel.
     const deleteStopsRun = archiveStopsRun
     const [confirmingArchive, setConfirmingArchive] = useState(false)
@@ -372,8 +375,8 @@ export function TaskDetail(props: {
                             <div className="flex items-start gap-3">
                                 <div className="min-w-0 flex-1">
                                     <p className="pw-eyebrow text-[var(--app-hint)]">
-                                        {t(`board.column.${task.column}`)}
-                                        {task.lastRunStatus ? ` · ${t(`board.detail.run.${task.lastRunStatus}`)}` : ''}
+                                        {columnLabel}
+                                        {runLabel && runLabel.toLowerCase() !== columnLabel.toLowerCase() ? ` · ${runLabel}` : ''}
                                         {isArchived ? ` · ${t('board.detail.archived')}` : ''}
                                     </p>
                                     <BackgroundWork session={props.session} />
