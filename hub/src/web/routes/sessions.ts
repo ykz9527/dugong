@@ -29,6 +29,7 @@ import { RPC_METHODS } from '@hapi/protocol/rpcMethods'
 import type { SlashCommand } from '@hapi/protocol/apiTypes'
 import { Hono, type Context } from 'hono'
 import type { Store } from '../../store'
+import type { TaskOrchestrator } from '../../sync/taskOrchestrator'
 import type { SyncEngine, Session } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { loadScratchlistAttachmentLimitsFromEnv } from '../../config/scratchlistAttachmentLimits'
@@ -73,7 +74,8 @@ function estimateBase64Bytes(base64: string): number {
 
 export function createSessionsRoutes(
     getSyncEngine: () => SyncEngine | null,
-    store: Store
+    store: Store,
+    getTaskOrchestrator: () => TaskOrchestrator | null = () => null
 ): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
@@ -851,6 +853,8 @@ export function createSessionsRoutes(
 
         try {
             await engine.renameSession(sessionResult.sessionId, parsed.data.name)
+            // A card and its session carry one name.
+            getTaskOrchestrator()?.sessionRenamed(sessionResult.sessionId, parsed.data.name)
             return c.json({ ok: true })
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to rename session'

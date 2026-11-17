@@ -310,7 +310,7 @@ export function createWebApp(options: {
 
     app.use('/api/*', createAuthMiddleware(options.jwtSecret))
     app.route('/api', createEventsRoutes(options.getSseManager, options.getSyncEngine, options.getVisibilityTracker))
-    app.route('/api', createSessionsRoutes(options.getSyncEngine, options.store))
+    app.route('/api', createSessionsRoutes(options.getSyncEngine, options.store, options.getTaskOrchestrator))
     app.route('/api', createMessagesRoutes(options.getSyncEngine))
     app.route('/api', createPermissionsRoutes(options.getSyncEngine, (namespace, workspaceUserId, sessionId, tools) => {
         // Only the session the hub itself assigned as this person's assistant,

@@ -473,6 +473,9 @@ export function createTasksRoutes(options: {
         if (!updated) {
             return c.json({ error: 'Task not found' }, 404)
         }
+        if (body.title !== undefined) {
+            await getTaskOrchestrator()?.taskRenamed(updated)
+        }
 
         const task = toTask(updated)
         return task ? c.json({ task }) : c.json({ error: 'Task row is not readable' }, 500)

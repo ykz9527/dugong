@@ -16,6 +16,7 @@ import {
     getTaskRun,
     hasNativeSessionSibling,
     isSessionOnBoard,
+    listMisnamedTaskSessions,
     listOffBoardSessionIds,
     listTaskRuns,
     listTasks,
@@ -145,6 +146,11 @@ export class TaskStore {
     /** See `isSessionOnBoard`. */
     isSessionOnBoard(sessionId: string): boolean {
         return isSessionOnBoard(this.db, sessionId)
+    }
+
+    /** See `listMisnamedTaskSessions`. */
+    listMisnamedSessions(): Array<{ sessionId: string; title: string }> {
+        return listMisnamedTaskSessions(this.db)
     }
 
     /** See `listOffBoardSessionIds`. */

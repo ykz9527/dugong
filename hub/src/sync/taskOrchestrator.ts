@@ -106,6 +106,9 @@ export type TaskOrchestratorDeps = {
     reopenSession?: (sessionId: string, namespace: string) => Promise<SpawnTaskSessionResult>
     /** Ask the agent to stop. Optional so a headless test harness can omit it. */
     abortSession?: (sessionId: string) => Promise<void>
+    /** Set a session's name. Optional so a headless test harness can omit it;
+     *  see `nameSession` for why the board names its sessions. */
+    renameSession?: (sessionId: string, name: string) => Promise<void>
     /**
      * End a session's process on its machine.
      *
@@ -467,6 +470,10 @@ export class TaskOrchestrator {
     start(): void {
         if (this.unsubscribe) return
 
+        void this.nameMisnamedSessions().catch((error) => {
+            this.logError('Failed to catch up on session names', error)
+        })
+
         const window = this.deps.reattachWindowMs ?? REATTACH_WINDOW_MS
         if (window <= 0) {
             // No window at all: one sweep, everything settled now.
@@ -655,6 +662,9 @@ export class TaskOrchestrator {
         // another two minutes later won by 2ms.
         await this.waitForSessionAttached(spawned.sessionId)
 
+        // Re-read the title: the task may have been renamed mid-spawn.
+        await this.nameSession(spawned.sessionId, store.tasks.get(task.id)?.title ?? task.title)
+
         // An adopted task's agent was resumed into a conversation that already
         // has its own history. `task.prompt` is only that conversation's
         // summary, kept as the task's description — delivering it would inject
@@ -756,6 +766,7 @@ export class TaskOrchestrator {
         this.publishTask(started.task)
 
         await this.waitForSessionAttached(reopened.sessionId)
+        await this.nameSession(reopened.sessionId, store.tasks.get(task.id)?.title ?? task.title)
         try {
             await this.deps.sendMessage(reopened.sessionId, options.prompt)
         } catch (error) {
@@ -1180,6 +1191,7 @@ export class TaskOrchestrator {
             this.boardSessionIds.add(sessionId)
             const adopted = started.outcome === 'started' ? started.task : store.tasks.get(task.id)
             this.publishTask(adopted)
+            void this.nameSession(sessionId, title)
             return { outcome: 'adopted', task: adopted ?? task }
         }
 
@@ -1194,7 +1206,60 @@ export class TaskOrchestrator {
         this.boardSessionIds.add(sessionId)
         const adopted = store.tasks.get(task.id) ?? task
         this.publishTask(adopted)
+        void this.nameSession(sessionId, title)
         return { outcome: 'adopted', task: adopted }
+    }
+
+    /**
+     * The card was renamed; the conversation it runs follows.
+     *
+     * Earlier runs' sessions keep the name they ran under: they are history,
+     * and the card's `Open chat` no longer leads to them.
+     */
+    async taskRenamed(task: StoredTask): Promise<void> {
+        this.publishTask(task)
+        if (task.currentSessionId) {
+            await this.nameSession(task.currentSessionId, task.title)
+        }
+    }
+
+    /** A card's session was renamed by hand; the card follows. */
+    sessionRenamed(sessionId: string, name: string): StoredTask | null {
+        const store = this.deps.store
+        const task = store.tasks.getBySession(sessionId)
+        if (!task || task.title === name) return task
+        const updated = store.tasks.update(task.id, task.namespace, { title: name })
+        this.publishTask(updated)
+        return updated
+    }
+
+    /**
+     * Give a card's session the card's name.
+     *
+     * A card and the conversation it runs are one piece of work, so they carry
+     * one name, and the card's is the one that counts. Left to itself a
+     * session is labelled by its agent's summary, which tracks whatever was
+     * asked last, or by the first line of its opening prompt - neither is the
+     * name someone gave the work.
+     */
+    private async nameSession(sessionId: string, name: string): Promise<void> {
+        const rename = this.deps.renameSession
+        if (!rename) return
+        const row = this.deps.store.sessions.getSession(sessionId)
+        if (!row || readAdoptableMetadata(row.metadata).name === name) return
+        try {
+            await rename(sessionId, name)
+        } catch (error) {
+            // A label, not the work: a run must not fail over it.
+            this.logError(`Failed to name session ${sessionId}`, error)
+        }
+    }
+
+    /** Catch up on pairs that drifted before the board kept them in step. */
+    private async nameMisnamedSessions(): Promise<void> {
+        for (const { sessionId, title } of this.deps.store.tasks.listMisnamedSessions()) {
+            await this.nameSession(sessionId, title)
+        }
     }
 
     /**

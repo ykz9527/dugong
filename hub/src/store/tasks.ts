@@ -191,6 +191,20 @@ export function getTaskBySession(db: Database, sessionId: string): StoredTask | 
     return row ? toStoredTask(row) : null
 }
 
+/**
+ * Cards whose current session is named something other than the card.
+ *
+ * A card and the conversation it runs carry one name. These are the pairs
+ * that drifted before that was kept, or while the hub was not there to keep it.
+ */
+export function listMisnamedTaskSessions(db: Database): Array<{ sessionId: string; title: string }> {
+    return db.prepare(
+        `SELECT t.current_session_id AS sessionId, t.title AS title
+         FROM tasks t JOIN sessions s ON s.id = t.current_session_id
+         WHERE json_extract(s.metadata, '$.name') IS NOT t.title`
+    ).all() as Array<{ sessionId: string; title: string }>
+}
+
 export type ListTasksOptions = {
     column?: string
     machineId?: string

@@ -28,6 +28,18 @@ let stopCalls: Array<{ machineId: string; sessionId: string }>
 let abortImpl: (sessionId: string) => Promise<void>
 let published: StoredTask[]
 
+/** What the hub's rename does to the row, minus the cache and the events. */
+async function renameStoredSession(sessionId: string, name: string): Promise<void> {
+    const row = store.sessions.getSession(sessionId)
+    if (!row) throw new Error('Session not found')
+    store.sessions.updateSessionMetadata(
+        sessionId, { ...(row.metadata as object), name }, row.metadataVersion, row.namespace
+    )
+}
+
+const sessionName = (id: string) =>
+    (store.sessions.getSession(id)?.metadata as { name?: string } | undefined)?.name
+
 function emit(event: SyncEvent): void {
     for (const listener of listeners) listener(event)
 }
@@ -1309,5 +1321,56 @@ describe('prompt delivery waits for the CLI to attach', () => {
         const task = makeTask()
         await orchestrator.startTask(task.id, 'default')
         expect(sentMessages).toEqual([{ sessionId: 'sess-1', text: task.prompt }])
+    })
+})
+
+describe('one name for a card and its session', () => {
+    beforeEach(() => {
+        orchestrator.stop()
+        orchestrator = new TaskOrchestrator({
+            store,
+            getSession: (id) => sessions.get(id) ?? null,
+            spawnSession: async () => ({ type: 'success', sessionId: 'sess-1' }),
+            sendMessage: async () => {},
+            renameSession: renameStoredSession,
+            subscribe: () => () => {},
+            onTaskChanged: (task) => published.push(task),
+            reattachWindowMs: 0
+        })
+    })
+
+    it('names the session it spawns after the card', async () => {
+        const task = makeTask({ title: 'Parser: stop dropping quotes' })
+
+        await orchestrator.startTask(task.id, 'default')
+
+        expect(sessionName('sess-1')).toBe('Parser: stop dropping quotes')
+    })
+
+    it('keeps the names in step from either side', async () => {
+        const task = makeTask()
+        await orchestrator.startTask(task.id, 'default')
+
+        const renamed = store.tasks.update(task.id, 'default', { title: 'Parse it right' })!
+        await orchestrator.taskRenamed(renamed)
+        expect(sessionName('sess-1')).toBe('Parse it right')
+
+        await renameStoredSession('sess-1', 'Quotes, finally')
+        orchestrator.sessionRenamed('sess-1', 'Quotes, finally')
+        expect(store.tasks.get(task.id)?.title).toBe('Quotes, finally')
+        expect(published.at(-1)?.title).toBe('Quotes, finally')
+    })
+
+    it('renames sessions that drifted while nothing kept them in step', async () => {
+        // Cards from before the board named its sessions: the session is
+        // labelled by its own summary, the card by what someone called it.
+        const task = makeTask({ title: 'Release notes' })
+        store.tasks.startRun({ taskId: task.id, namespace: 'default', origin: 'user', sessionId: 'sess-1', column: 'review' })
+        await renameStoredSession('sess-1', 'you are the release manager, read the log and')
+
+        orchestrator.start()
+
+        await Promise.resolve()
+        expect(sessionName('sess-1')).toBe('Release notes')
     })
 })

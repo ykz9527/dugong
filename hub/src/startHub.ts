@@ -287,6 +287,9 @@ export async function startHub(options: StartHubOptions = {}): Promise<HubInstan
                 ? { type: 'success', sessionId: result.sessionId }
                 : { type: 'error', message: result.message }
         },
+        renameSession: async (sessionId, name) => {
+            await syncEngine?.renameSession(sessionId, name)
+        },
         stopSession: async (machineId, sessionId) =>
             await syncEngine?.stopRunnerSession(machineId, sessionId),
         // Room membership is what delivery actually depends on, so it is what
