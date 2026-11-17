@@ -1134,13 +1134,30 @@ export function reconcileQueuedLocalIds(
     const candidates = new Set(candidateLocalIds)
     const queued = new Set(queuedLocalIds)
     updateState(sessionId, (previous) => {
-        const messages = previous.messages.filter((message) => {
-            if (!message.localId || !candidates.has(message.localId)) return true
-            return queued.has(message.localId) || !isQueuedReconcileCandidate(message)
-        })
-        return messages.length === previous.messages.length
-            ? previous
-            : buildState(previous, { messages })
+        let changed = false
+        const messages: DecryptedMessage[] = []
+        for (const message of previous.messages) {
+            if (
+                !message.localId
+                || !candidates.has(message.localId)
+                || queued.has(message.localId)
+                || !isQueuedReconcileCandidate(message)
+            ) {
+                messages.push(message)
+                continue
+            }
+            changed = true
+            // The hub has never stored this local send (the page died or went
+            // offline before the POST landed). Keep the text as a failed row
+            // the person can retry instead of dropping it without a word.
+            // Stored rows the hub no longer knows were cancelled: drop them.
+            if (optimisticMessage(message)) {
+                messages.push({ ...message, status: 'failed' })
+            }
+        }
+        return changed
+            ? buildState(previous, { messages })
+            : previous
     }, true)
 }
 
@@ -1158,9 +1175,13 @@ export function updateMessageStatus(sessionId: string, localId: string, status: 
     updateState(sessionId, (previous) => {
         let changed = false
         const messages = previous.messages.map((message) => {
-            if (message.localId !== localId || message.status === status) return message
+            if (message.localId !== localId) return message
+            // The send response can land after the CLI already consumed the
+            // message; a late 'queued' must not put the clock back on it.
+            const next = status === 'queued' && message.invokedAt != null ? 'sent' : status
+            if (message.status === next) return message
             changed = true
-            return { ...message, status }
+            return { ...message, status: next }
         })
         return changed ? buildState(previous, { messages }) : previous
     })

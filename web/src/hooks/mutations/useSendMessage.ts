@@ -219,6 +219,13 @@ export function useSendMessage(
     isSessionThinkingRef.current = options?.isSessionThinking ?? false
 
     const mutation = useMutation({
+        // Always attempt the POST. The default 'online' mode parks the mutation
+        // after a browser `offline` event until an `online` event arrives; on
+        // phones that event can be missed after sleep or a network switch, so
+        // the optimistic row sat in the Queued bar forever with no request
+        // sent, and every later send was swallowed as 'pending'. A real
+        // network failure now surfaces through onError instead.
+        networkMode: 'always',
         mutationFn: async (input: SendMessageInput) => {
             if (!api) {
                 throw new Error('API unavailable')

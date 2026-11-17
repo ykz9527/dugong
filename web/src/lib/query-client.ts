@@ -9,6 +9,9 @@ export const queryClient = new QueryClient({
         },
         mutations: {
             retry: 0,
+            // Never park a user action waiting for a browser `online` event
+            // (phones can miss it); try the request and let errors surface.
+            networkMode: 'always',
         },
     },
 })

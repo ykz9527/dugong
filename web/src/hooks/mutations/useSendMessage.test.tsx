@@ -70,6 +70,33 @@ describe('useSendMessage', () => {
         })
     })
 
+    it('still sends when the browser last reported offline', async () => {
+        // A phone that slept or switched networks can miss the `online`
+        // event; the send must not wait for it with the row in the Queued bar.
+        const { onlineManager } = await import('@tanstack/react-query')
+        onlineManager.setOnline(false)
+        try {
+            const send = vi.fn(async () => {})
+            const { result } = renderHook(
+                () => useSendMessage(createMockApi(send), 'session-A'),
+                { wrapper: createWrapper() },
+            )
+
+            act(() => {
+                void result.current.sendMessage('hello')
+            })
+
+            await waitFor(() => {
+                expect(send).toHaveBeenCalledTimes(1)
+            })
+            await waitFor(() => {
+                expect(result.current.isSending).toBe(false)
+            })
+        } finally {
+            onlineManager.setOnline(true)
+        }
+    })
+
     it('keeps a thinking-session send in flight until the POST confirms it is queued', async () => {
         const request = deferred<void>()
         const api = createMockApi(() => request.promise)

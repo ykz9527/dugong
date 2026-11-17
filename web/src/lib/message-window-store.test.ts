@@ -1301,7 +1301,33 @@ describe('optimistic and queued-message operations', () => {
             ['local-queued']
         )
 
-        expect(getMessageWindowState(id).messages.map((message) => message.id)).toEqual(['queued'])
+        // The stored row the hub no longer knows was cancelled; the local send
+        // the hub never stored stays as a failed row the person can retry.
+        expect(Object.fromEntries(
+            getMessageWindowState(id).messages.map((message) => [message.id, message.status ?? null])
+        )).toEqual({
+            queued: null,
+            'local-optimistic': 'failed'
+        })
+        expect(getQueuedReconcileCandidateLocalIds(id)).toEqual(['local-queued'])
+    })
+
+    it('does not put the queued clock back on a message the CLI already consumed', () => {
+        const id = sessionId('late-queued-status')
+        appendOptimisticMessage(id, makeUserMessage({
+            id: 'local-late',
+            localId: 'local-late',
+            invokedAt: null,
+            status: 'sending'
+        }))
+        markMessagesConsumed(id, ['local-late'], 2_000)
+        // The POST response arrives after the consumed event, while the
+        // composer still believed the session was busy.
+        updateMessageStatus(id, 'local-late', 'queued')
+
+        expect(getMessageWindowState(id).messages).toMatchObject([
+            { id: 'local-late', invokedAt: 2_000, status: 'sent' }
+        ])
     })
 
     it('removes a queued or optimistic row by localId idempotently', () => {
