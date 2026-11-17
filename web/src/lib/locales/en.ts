@@ -1260,6 +1260,8 @@ export default {
   'board.error.run.sessionError': 'The session ended with an error.',
   'board.detail.close': 'Close',
   'board.detail.archived': 'Archived',
+  'board.detail.rename': 'Rename task',
+  'board.detail.titleLabel': 'Task title',
   'board.detail.waiting': 'The agent is waiting on you',
   'board.detail.approve': 'Approve',
   'board.detail.deny': 'Refuse',

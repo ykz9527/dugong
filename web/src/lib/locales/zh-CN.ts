@@ -1264,6 +1264,8 @@ export default {
   'board.error.run.sessionError': '会话以错误结束。',
   'board.detail.close': '关闭',
   'board.detail.archived': '已归档',
+  'board.detail.rename': '重命名任务',
+  'board.detail.titleLabel': '任务标题',
   'board.detail.waiting': '智能体在等你',
   'board.detail.approve': '批准',
   'board.detail.deny': '拒绝',

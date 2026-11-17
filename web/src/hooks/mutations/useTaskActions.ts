@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import type { CreateTaskRequest, TaskListResponse, UpdateTaskRequest } from '@hapi/protocol/apiTypes'
+import type { CreateTaskRequest, TaskDetailResponse, TaskListResponse, UpdateTaskRequest } from '@hapi/protocol/apiTypes'
 import { getFlavorLabel, type PermissionMode, type Task, type TaskColumn } from '@hapi/protocol'
 import { readableError, type ApiClient, type CreateTaskResponse, type TaskArchiveResponse } from '@/api/client'
 import { queryKeys } from '@/lib/query-keys'
@@ -130,7 +130,16 @@ export function useTaskActions(api: ApiClient | null): {
     const updateTask = useMutation({
         mutationFn: async (input: { taskId: string; patch: UpdateTaskRequest }) =>
             await requireApi().updateTask(input.taskId, input.patch),
-        onSuccess: invalidate,
+        onSuccess: ({ task }) => {
+            // The hub answers with the saved row; showing it now keeps a renamed
+            // title from snapping back to the old one until the refetch lands.
+            patchTaskInLists(queryClient, task.id, task)
+            queryClient.setQueryData<TaskDetailResponse>(
+                queryKeys.task(task.id),
+                (previous) => previous ? { ...previous, task } : previous
+            )
+            invalidate()
+        },
     })
 
     const moveTask = useMutation({

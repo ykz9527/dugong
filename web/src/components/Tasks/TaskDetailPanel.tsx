@@ -34,6 +34,7 @@ export function TaskDetailPanel(props: {
             onStart={lifecycle.start}
             onCancel={lifecycle.cancel}
             onMove={lifecycle.move}
+            onRename={lifecycle.rename}
             onArchive={lifecycle.archive}
             onUnarchive={lifecycle.unarchive}
             onDelete={(taskId, options) => {

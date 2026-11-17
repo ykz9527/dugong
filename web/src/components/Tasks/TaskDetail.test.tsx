@@ -284,6 +284,21 @@ describe('TaskDetail', () => {
             expect((within(panel).getByLabelText('Permissions') as HTMLSelectElement).value).toBe('acceptEdits'))
     })
 
+    it('renames the task from the panel', async () => {
+        const renamed = makeTask({ title: 'Parse it right' })
+        const api = makeApi(makeTask(), { updateTask: vi.fn(async () => ({ task: renamed })) })
+        renderPanel(api)
+        const panel = await openDetail()
+
+        fireEvent.click(within(panel).getByRole('button', { name: 'Fix the parser' }))
+        const input = within(panel).getByLabelText('Task title')
+        fireEvent.change(input, { target: { value: '  Parse it right  ' } })
+        fireEvent.keyDown(input, { key: 'Enter' })
+
+        await waitFor(() => expect(api.updateTask).toHaveBeenCalledWith('task-1', { title: 'Parse it right' }))
+        await waitFor(() => expect(within(panel).queryByLabelText('Task title')).toBeNull())
+    })
+
     it('closes again', async () => {
         renderPanel(makeApi(makeTask()))
         const panel = await openDetail()

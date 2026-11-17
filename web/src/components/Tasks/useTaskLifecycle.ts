@@ -82,6 +82,16 @@ export function useTaskLifecycle(api: ApiClient | null) {
         }
     }
 
+    /** Resolves true once saved, so an editor showing the draft can close. */
+    const rename = async (taskId: string, title: string): Promise<boolean> => {
+        try {
+            await actions.updateTask({ taskId, patch: { title } })
+            return true
+        } catch {
+            return false
+        }
+    }
+
     return {
         actions,
         run,
@@ -94,6 +104,7 @@ export function useTaskLifecycle(api: ApiClient | null) {
         archive: (taskId: string, options: ArchiveOptions) => run(archive(taskId, options)),
         unarchive: (taskId: string) => run(actions.unarchiveTask(taskId)),
         remove,
+        rename,
         openPullRequest: (taskId: string) => run(actions.openPullRequest({ taskId })),
         refreshPullRequest: (taskId: string) => run(actions.refreshPullRequest(taskId))
     }

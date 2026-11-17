@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
@@ -184,6 +184,8 @@ export function TaskDetail(props: {
     onStart: (taskId: string) => void
     onCancel: (taskId: string) => void
     onMove: (taskId: string, column: TaskColumn) => void
+    /** Resolves true once saved; a refused rename keeps the draft open. */
+    onRename: (taskId: string, title: string) => Promise<boolean>
     onArchive: (
         taskId: string,
         options: { force: boolean; stopRun: boolean; forceWorktree: boolean }
@@ -218,6 +220,40 @@ export function TaskDetail(props: {
     const deleteStopsRun = archiveStopsRun
     const [confirmingArchive, setConfirmingArchive] = useState(false)
     const [confirmingDelete, setConfirmingDelete] = useState(false)
+    // Non-null while the title is being edited. Renaming only touches the
+    // label, so it stays open on running and archived tasks alike.
+    const [titleDraft, setTitleDraft] = useState<string | null>(null)
+    // Refs, not state: disabling the focused input on save blurs it, and so
+    // does dropping it on Escape - both would otherwise reach `commitTitle`
+    // through a closure that has not seen the change yet.
+    const savingTitleRef = useRef(false)
+    const discardTitleRef = useRef(false)
+    const [savingTitle, setSavingTitle] = useState(false)
+
+    const editTitle = () => {
+        discardTitleRef.current = false
+        setTitleDraft(task.title)
+    }
+
+    const discardTitle = () => {
+        discardTitleRef.current = true
+        setTitleDraft(null)
+    }
+
+    const commitTitle = async () => {
+        if (titleDraft === null || savingTitleRef.current || discardTitleRef.current) return
+        const next = titleDraft.trim()
+        if (!next || next === task.title) {
+            discardTitle()
+            return
+        }
+        savingTitleRef.current = true
+        setSavingTitle(true)
+        const saved = await props.onRename(task.id, next)
+        savingTitleRef.current = false
+        setSavingTitle(false)
+        if (saved) discardTitle()
+    }
     // An archived task is out of the lifecycle: the only things left to do
     // with it are to bring it back, read its conversation, or delete it.
     const isArchived = task.archivedAt !== null
@@ -318,7 +354,17 @@ export function TaskDetail(props: {
         <DialogPrimitive.Root open onOpenChange={(open) => { if (!open) props.onClose() }}>
             <DialogPrimitive.Portal>
                 <DialogPrimitive.Overlay className="pw-overlay fixed inset-0 z-50 bg-black/20" />
-                <DialogPrimitive.Content asChild aria-modal="true" aria-describedby={undefined}>
+                <DialogPrimitive.Content
+                    asChild
+                    aria-modal="true"
+                    aria-describedby={undefined}
+                    onEscapeKeyDown={(event) => {
+                        // Escape while renaming drops the draft, not the panel.
+                        if (titleDraft === null) return
+                        event.preventDefault()
+                        discardTitle()
+                    }}
+                >
                     <aside
                         className="pw-panel-in fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-md flex-col overflow-hidden border-l border-[var(--app-rule)] bg-[var(--app-bg)] focus:outline-none"
                     >
@@ -331,9 +377,40 @@ export function TaskDetail(props: {
                                         {isArchived ? ` · ${t('board.detail.archived')}` : ''}
                                     </p>
                                     <BackgroundWork session={props.session} />
-                                    <DialogPrimitive.Title className="mt-1.5 break-words text-[20px] font-medium leading-[1.2] tracking-[-0.025em] text-[var(--app-fg)]">
-                                        {task.title}
-                                    </DialogPrimitive.Title>
+                                    {titleDraft !== null ? (
+                                        <>
+                                            <DialogPrimitive.Title className="sr-only">{task.title}</DialogPrimitive.Title>
+                                            <input
+                                                autoFocus
+                                                value={titleDraft}
+                                                maxLength={200}
+                                                disabled={savingTitle}
+                                                aria-label={t('board.detail.titleLabel')}
+                                                onChange={(event) => setTitleDraft(event.target.value)}
+                                                onBlur={() => void commitTitle()}
+                                                onKeyDown={(event) => {
+                                                    // An IME's Enter picks a candidate; it is not a submit.
+                                                    if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
+                                                    event.preventDefault()
+                                                    void commitTitle()
+                                                }}
+                                                className="mt-1.5 w-full border-0 border-b border-[var(--app-rule)] bg-transparent px-0 py-0 text-[20px] font-medium leading-[1.2] tracking-[-0.025em] text-[var(--app-fg)] outline-none focus:border-[var(--app-accent)] disabled:opacity-50"
+                                            />
+                                        </>
+                                    ) : (
+                                        <DialogPrimitive.Title className="mt-1.5 break-words text-[20px] font-medium leading-[1.2] tracking-[-0.025em] text-[var(--app-fg)]">
+                                            {/* Click the title to rename it, as a machine's name is
+                                                renamed in settings. */}
+                                            <button
+                                                type="button"
+                                                onClick={editTitle}
+                                                title={t('board.detail.rename')}
+                                                className="max-w-full break-words text-left decoration-1 underline-offset-4 hover:underline"
+                                            >
+                                                {task.title}
+                                            </button>
+                                        </DialogPrimitive.Title>
+                                    )}
                                 </div>
                                 <Button
                                     type="button"
