@@ -187,6 +187,33 @@ function persistState(sessionId: string, state: InternalState): void {
         }
         sessionStorage.setItem(getStorageKey(sessionId), JSON.stringify(persisted))
     } catch {
+        // Over the storage quota (a long window, e.g. a whole turn opened from
+        // the outline). Silently keeping the previous copy meant a reload
+        // showed a stale window. Keep only what cannot be fetched again, the
+        // sends the hub may not have; with no cursor, a reload fetches the
+        // latest page.
+        persistPinnedOnly(sessionId, state)
+    }
+}
+
+function persistPinnedOnly(sessionId: string, state: InternalState): void {
+    try {
+        sessionStorage.removeItem(getStorageKey(sessionId))
+        const pinned = state.messages.filter((message) => isQueuedForInvocation(message) || message.status === 'failed')
+        if (pinned.length === 0) {
+            return
+        }
+        const persisted: PersistedMessageWindowState = {
+            messages: pinned,
+            hasMore: true,
+            oldestPositionAt: null,
+            oldestPositionSeq: null,
+            newestPositionAt: null,
+            newestPositionSeq: null,
+            epoch: null
+        }
+        sessionStorage.setItem(getStorageKey(sessionId), JSON.stringify(persisted))
+    } catch {
     }
 }
 

@@ -1446,6 +1446,31 @@ describe('V2 persistence boundary', () => {
         expect(getMessageWindowState(id).messages[0]?.status).toBe('queued')
         expect(getQueuedReconcileCandidateLocalIds(id)).toEqual(['local-1'])
     })
+
+    it('replaces a stale copy with only the unsent rows when the window is over quota', async () => {
+        const id = sessionId('over-quota')
+        const key = `hapi:message-window:v2:${id}`
+        sessionStorage.setItem(key, JSON.stringify({ messages: [makeAgentMessage({ id: 'stale', seq: 1, at: 1 })], hasMore: false, epoch: 0 }))
+        const realSetItem = Storage.prototype.setItem
+        const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, k: string, v: string) {
+            if (v.length > 2_000) throw new DOMException('quota', 'QuotaExceededError')
+            return realSetItem.call(this, k, v)
+        })
+        try {
+            ingestIncomingMessages(id, [
+                ...Array.from({ length: 50 }, (_, index) => makeAgentMessage({ id: `row-${index}`, seq: index + 2, at: index + 2 })),
+                makeUserMessage({ id: 'local-unsent', localId: 'local-unsent', createdAt: 100, invokedAt: null, status: 'queued' })
+            ])
+            // Persistence is throttled on a real 200ms timer.
+            await new Promise((resolve) => setTimeout(resolve, 450))
+
+            const saved = JSON.parse(sessionStorage.getItem(key) ?? 'null') as { messages: Array<{ id: string }>; newestPositionAt: unknown }
+            expect(saved.messages.map((message) => message.id)).toEqual(['local-unsent'])
+            expect(saved.newestPositionAt).toBeNull()
+        } finally {
+            setItem.mockRestore()
+        }
+    })
 })
 
 
