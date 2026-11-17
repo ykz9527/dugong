@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
     computePendingRequestKinds,
@@ -311,7 +311,7 @@ export function useSSE(options: {
     onDisconnect?: (reason: string) => void
     onError?: (error: unknown) => void
     onToast?: (event: ToastEvent) => void
-}): { subscriptionId: string | null } {
+}): { subscriptionId: string | null; reconnect: (reason: string) => void } {
     const queryClient = useQueryClient()
     const onEventRef = useRef(options.onEvent)
     const onConnectRef = useRef(options.onConnect)
@@ -321,6 +321,8 @@ export function useSSE(options: {
     const eventSourceRef = useRef<EventSource | null>(null)
     const invalidationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const sessionListTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    // Set while a connection is live: drop it and connect again now.
+    const reconnectNowRef = useRef<((reason: string) => void) | null>(null)
     const lastSessionListRefetchAtRef = useRef(0)
     const pendingInvalidationsRef = useRef<{
         sessions: boolean
@@ -465,6 +467,12 @@ export function useSSE(options: {
             }
             setSubscriptionId(null)
             scheduleReconnect()
+        }
+
+        reconnectNowRef.current = (reason: string) => {
+            if (eventSourceRef.current === eventSource) {
+                requestReconnect(reason)
+            }
         }
 
         const refetchSessionList = () => {
@@ -1051,9 +1059,16 @@ export function useSSE(options: {
             if (eventSourceRef.current === eventSource) {
                 eventSourceRef.current = null
             }
+            reconnectNowRef.current = null
             setSubscriptionId(null)
         }
     }, [options.baseUrl, options.enabled, options.scope, options.token, scope, subscriptionKey, workspaceUserId, queryClient, reconnectNonce])
 
-    return { subscriptionId }
+    /** The hub no longer knows this subscription (e.g. it dropped the stream
+     *  while the phone slept): reconnect now rather than wait for the watchdog. */
+    const reconnect = useCallback((reason: string) => {
+        reconnectNowRef.current?.(reason)
+    }, [])
+
+    return { subscriptionId, reconnect }
 }

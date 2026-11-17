@@ -96,6 +96,27 @@ describe('useSSE connection liveness (mobile suspend/resume)', () => {
         unmount()
     })
 
+    it('reconnects on request when the hub has dropped the subscription', () => {
+        const queryClient = new QueryClient()
+        const wrapper = ({ children }: { children: ReactNode }) =>
+            createElement(QueryClientProvider, { client: queryClient }, children)
+        const { result, unmount } = renderHook(() => useSSE({
+            enabled: true,
+            token: 'test-token',
+            baseUrl: 'http://hub.test',
+            subscription: { all: true },
+            onEvent: () => {}
+        }), { wrapper })
+        act(() => { FakeEventSource.instances[0]?.simulateOpen() })
+
+        act(() => { result.current.reconnect('subscription-lost') })
+        expect(FakeEventSource.instances[0]?.readyState).toBe(FakeEventSource.CLOSED)
+
+        act(() => { vi.advanceTimersByTime(600) })
+        expect(FakeEventSource.instances).toHaveLength(2)
+        unmount()
+    })
+
     it('keeps a fresh connection on visibility resume', () => {
         const onDisconnect = vi.fn()
         const { unmount } = renderUseSSE({ onDisconnect })

@@ -376,7 +376,7 @@ function AppInner() {
     // them synchronously; must sit above the subscriptions themselves.
     useWorkspaceUserScopeSync(api)
 
-    const { subscriptionId: globalSubscriptionId } = useSSE({
+    const { subscriptionId: globalSubscriptionId, reconnect: reconnectGlobalSse } = useSSE({
         enabled: sseEnabled,
         token: token ?? '',
         baseUrl,
@@ -388,7 +388,7 @@ function AppInner() {
         onToast: handleToast
     })
 
-    const { subscriptionId: sessionSubscriptionId } = useSSE({
+    const { subscriptionId: sessionSubscriptionId, reconnect: reconnectSessionSse } = useSSE({
         enabled: sseEnabled && Boolean(sessionEventSubscription),
         token: token ?? '',
         baseUrl,
@@ -401,12 +401,14 @@ function AppInner() {
     useVisibilityReporter({
         api,
         subscriptionId: globalSubscriptionId,
-        enabled: sseEnabled
+        enabled: sseEnabled,
+        onSubscriptionLost: () => reconnectGlobalSse('subscription-lost')
     })
 
     useVisibilityReporter({
         api,
         subscriptionId: sessionSubscriptionId,
+        onSubscriptionLost: () => reconnectSessionSse('subscription-lost'),
         enabled: sseEnabled && Boolean(sessionEventSubscription)
     })
 

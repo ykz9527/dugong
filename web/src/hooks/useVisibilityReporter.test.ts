@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ApiClient } from '@/api/client'
+import { ApiError, type ApiClient } from '@/api/client'
 import { useVisibilityReporter } from '@/hooks/useVisibilityReporter'
 
 function setVisibilityState(state: DocumentVisibilityState): void {
@@ -26,6 +26,25 @@ afterEach(() => {
 })
 
 describe('useVisibilityReporter', () => {
+    it('reconnects instead of retrying when the hub no longer has the subscription', async () => {
+        vi.useFakeTimers()
+        try {
+            const api = {
+                setVisibility: vi.fn().mockRejectedValue(new ApiError('Subscription not found', 404)),
+            } as unknown as ApiClient
+            const onSubscriptionLost = vi.fn()
+
+            renderHook(() => useVisibilityReporter({ api, subscriptionId: 'stale', onSubscriptionLost }))
+            await act(async () => {})
+            await act(async () => { vi.advanceTimersByTime(10_000) })
+
+            expect(onSubscriptionLost).toHaveBeenCalledTimes(1)
+            expect(api.setVisibility).toHaveBeenCalledTimes(1)
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+
     it('preserves a hidden transition that arrives while a visible report is pending', async () => {
         const visibleReport = deferred<void>()
         const api = {

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type { ApiClient } from '@/api/client'
+import { ApiError, type ApiClient } from '@/api/client'
 
 type VisibilityState = 'visible' | 'hidden'
 
@@ -14,7 +14,11 @@ export function useVisibilityReporter(options: {
     api: ApiClient | null
     subscriptionId: string | null
     enabled?: boolean
+    /** The hub answered 404: it no longer has this subscription. */
+    onSubscriptionLost?: () => void
 }): void {
+    const onSubscriptionLostRef = useRef(options.onSubscriptionLost)
+    onSubscriptionLostRef.current = options.onSubscriptionLost
     const lastStateRef = useRef<VisibilityState | null>(null)
     const lastSubscriptionRef = useRef<string | null>(null)
     const pendingStateRef = useRef<VisibilityState | null>(null)
@@ -89,6 +93,13 @@ export function useVisibilityReporter(options: {
                     return
                 }
                 hadError = true
+                if (error instanceof ApiError && error.status === 404) {
+                    // The hub dropped this stream (the tab slept through it);
+                    // retrying the same id can never succeed. Reconnect, and
+                    // the new subscription reports its own visibility.
+                    onSubscriptionLostRef.current?.()
+                    return
+                }
                 console.error('Failed to update visibility:', error)
                 if (!retryTimerRef.current) {
                     retryTimerRef.current = setTimeout(() => {
