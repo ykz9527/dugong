@@ -12,6 +12,7 @@ import {
     isRenderIrrelevantPatch,
     isRenderIrrelevantSessionPatch,
     isToastInActiveWorkspaceScope,
+    sessionBelongsInList,
     shouldInvalidateSessionListForEvent,
     useSSE
 } from './useSSE'
@@ -46,8 +47,8 @@ class FakeEventSource {
     }
 }
 
-function renderUseSSE(options?: { onDisconnect?: (reason: string) => void }) {
-    const queryClient = new QueryClient()
+function renderUseSSE(options?: { onDisconnect?: (reason: string) => void; queryClient?: QueryClient }) {
+    const queryClient = options?.queryClient ?? new QueryClient()
     const wrapper = ({ children }: { children: ReactNode }) =>
         createElement(QueryClientProvider, { client: queryClient }, children)
     return renderHook(() => useSSE({
@@ -185,6 +186,68 @@ function makeSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
         ...overrides
     } as SessionSummary
 }
+
+describe('session list refetches from live session updates', () => {
+    beforeEach(() => {
+        vi.useFakeTimers()
+        FakeEventSource.instances = []
+        vi.stubGlobal('EventSource', FakeEventSource)
+    })
+
+    afterEach(() => {
+        vi.unstubAllGlobals()
+        vi.useRealTimers()
+    })
+
+    function setup() {
+        const queryClient = new QueryClient()
+        // A loaded list that does not have the session being updated.
+        queryClient.setQueryData(['sessions'], { sessions: [] })
+        const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+        const { unmount } = renderUseSSE({ queryClient })
+        act(() => { FakeEventSource.instances[0]?.simulateOpen() })
+        const listRefetches = () => invalidate.mock.calls.filter(
+            ([filters]) => JSON.stringify(filters?.queryKey) === JSON.stringify(['sessions'])
+        ).length
+        const update = (data: unknown) => {
+            act(() => { FakeEventSource.instances[0]?.simulateMessage({ type: 'session-updated', sessionId: 'elsewhere', data }) })
+        }
+        return { listRefetches, update, unmount }
+    }
+
+    it('ignores churn from a session the list leaves out', () => {
+        const { listRefetches, update, unmount } = setup()
+        for (let i = 0; i < 20; i++) {
+            update({ thinking: i % 2 === 0, activeAt: 1_000 + i })
+            update({ metadata: { version: i + 1, value: { path: '/assistant/home', host: 'h', role: 'assistant' } } })
+            act(() => { vi.advanceTimersByTime(300) })
+        }
+        expect(listRefetches()).toBe(0)
+        unmount()
+    })
+
+    it('refetches at most once a second for a session that belongs in the list', () => {
+        const { listRefetches, update, unmount } = setup()
+        for (let i = 0; i < 10; i++) {
+            update({ metadata: { version: i + 1, value: { path: '/repo', host: 'h' } } })
+            act(() => { vi.advanceTimersByTime(50) })
+        }
+        expect(listRefetches()).toBe(1)
+        act(() => { vi.advanceTimersByTime(1_000) })
+        expect(listRefetches()).toBe(2)
+        unmount()
+    })
+})
+
+describe('sessionBelongsInList', () => {
+    it('leaves out assistant sessions and other people\'s directories', () => {
+        expect(sessionBelongsInList({ path: '/home/a/repo', role: 'assistant' }, null)).toBe(false)
+        expect(sessionBelongsInList({ path: '/home/b/repo' }, ['/home/a'])).toBe(false)
+        expect(sessionBelongsInList({ path: '/tmp/wt', worktree: { basePath: '/home/a/repo' } }, ['/home/a'])).toBe(true)
+        expect(sessionBelongsInList({ path: '/anywhere' }, null)).toBe(true)
+        expect(sessionBelongsInList(undefined, null)).toBe(false)
+    })
+})
 
 describe('canApplyVersionedSummaryPatch (PR #897 review, HAPI Bot 2026-07-23 Major)', () => {
     it('allows non-versioned patches without a detail cache', () => {

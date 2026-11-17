@@ -123,6 +123,28 @@ const RECONNECT_JITTER_MS = 500
 const RECONNECT_SLOW_AFTER_ATTEMPTS = 8
 const RECONNECT_SLOW_MAX_DELAY_MS = 300_000
 const INVALIDATION_BATCH_MS = 16
+// The session list is one request for every session the person can see.
+// Live patches keep it current; a full refetch more often than this only
+// burns battery and hub time (a woken phone used to fire 100+ a second).
+const SESSION_LIST_REFETCH_MIN_INTERVAL_MS = 1000
+
+/**
+ * Would the hub's session list include a session with this metadata? The list
+ * leaves out assistant sessions and, with a workspace user selected, sessions
+ * outside that person's directories; a patch for one of those must not send
+ * the client refetching a list it will never appear in.
+ */
+export function sessionBelongsInList(
+    metadata: { role?: string; path?: string; worktree?: { basePath?: string; worktreePath?: string } } | null | undefined,
+    roots: readonly string[] | null
+): boolean {
+    if (!metadata || metadata.role === 'assistant') return false
+    if (!roots) return true
+    return isOwnedByWorkspaceUser(
+        [metadata.path, metadata.worktree?.basePath, metadata.worktree?.worktreePath],
+        roots
+    )
+}
 
 function sortSessionSummaries(left: SessionSummary, right: SessionSummary): number {
     if (Boolean(left.globalPinned) !== Boolean(right.globalPinned)) {
@@ -298,6 +320,8 @@ export function useSSE(options: {
     const onToastRef = useRef(options.onToast)
     const eventSourceRef = useRef<EventSource | null>(null)
     const invalidationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const sessionListTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const lastSessionListRefetchAtRef = useRef(0)
     const pendingInvalidationsRef = useRef<{
         sessions: boolean
         machines: boolean
@@ -443,6 +467,19 @@ export function useSSE(options: {
             scheduleReconnect()
         }
 
+        const refetchSessionList = () => {
+            const wait = SESSION_LIST_REFETCH_MIN_INTERVAL_MS - (Date.now() - lastSessionListRefetchAtRef.current)
+            if (wait > 0) {
+                sessionListTimerRef.current ??= setTimeout(() => {
+                    sessionListTimerRef.current = null
+                    refetchSessionList()
+                }, wait)
+                return
+            }
+            lastSessionListRefetchAtRef.current = Date.now()
+            void queryClient.invalidateQueries({ queryKey: queryKeys.sessions }).catch(() => {})
+        }
+
         const flushInvalidations = () => {
             const pending = pendingInvalidationsRef.current
             if (
@@ -469,7 +506,7 @@ export function useSSE(options: {
 
             const tasks: Array<Promise<unknown>> = []
             if (shouldInvalidateSessions) {
-                tasks.push(queryClient.invalidateQueries({ queryKey: queryKeys.sessions }))
+                refetchSessionList()
             }
             for (const sessionId of sessionIds) {
                 tasks.push(queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) }))
@@ -563,8 +600,10 @@ export function useSSE(options: {
             })
         }
 
-        const patchSessionSummary = (sessionId: string, patch: SessionPatch): boolean => {
+        /** 'missing': the list is loaded but does not have this session. */
+        const patchSessionSummary = (sessionId: string, patch: SessionPatch): 'patched' | 'missing' | 'no-list' => {
             let patched = false
+            let missing = false
             queryClient.setQueryData<SessionsResponse | undefined>(queryKeys.sessions, (previous) => {
                 if (!previous) {
                     return previous
@@ -573,6 +612,7 @@ export function useSSE(options: {
                 const nextSessions = previous.sessions.slice()
                 const index = nextSessions.findIndex((item) => item.id === sessionId)
                 if (index < 0) {
+                    missing = true
                     return previous
                 }
 
@@ -634,7 +674,7 @@ export function useSSE(options: {
                 nextSessions.sort(sortSessionSummaries)
                 return { ...previous, sessions: nextSessions }
             })
-            return patched
+            return patched ? 'patched' : missing ? 'missing' : 'no-list'
         }
 
         const patchSessionDetail = (sessionId: string, patch: SessionPatch): boolean => {
@@ -814,7 +854,15 @@ export function useSSE(options: {
                         if (!detailPatched) {
                             queueSessionDetailInvalidation(event.sessionId)
                         }
-                        if (!summaryPatched) {
+                        // A session the list does not have is usually one it
+                        // deliberately leaves out (an assistant, someone else's
+                        // directory): refetch only when this patch shows it
+                        // belongs. Sessions missed during a connection gap are
+                        // covered by the full refetch on reconnect.
+                        if (
+                            summaryPatched === 'missing'
+                            && sessionBelongsInList(patch.metadata?.value, getActiveWorkspaceRoots())
+                        ) {
                             queueSessionListInvalidation()
                         }
                         // tiann/hapi#893: piggybacked scratchlist token.
@@ -987,6 +1035,10 @@ export function useSSE(options: {
             if (invalidationTimerRef.current) {
                 clearTimeout(invalidationTimerRef.current)
                 invalidationTimerRef.current = null
+            }
+            if (sessionListTimerRef.current) {
+                clearTimeout(sessionListTimerRef.current)
+                sessionListTimerRef.current = null
             }
             pendingInvalidationsRef.current.sessions = false
             pendingInvalidationsRef.current.machines = false
