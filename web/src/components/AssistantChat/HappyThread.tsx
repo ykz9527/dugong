@@ -43,7 +43,7 @@ type ScrollAnchor = {
 
 type PendingScrollRestore = {
     runId: number
-    anchor: ScrollAnchor | null
+    anchors: ScrollAnchor[]
     scrollTop: number
     scrollHeight: number
     targetHistoryVersion: number | null
@@ -207,6 +207,30 @@ export function captureScrollAnchor(viewport: HTMLElement): ScrollAnchor | null 
         }
     }
     return null
+}
+
+// Rows below the first visible one, kept as spare anchors.
+const SPARE_SCROLL_ANCHORS = 5
+
+/**
+ * The first visible row plus a few after it. The top row is often a grouped
+ * agent turn whose id comes from its first message, so prepending older rows
+ * of that same turn renames it; a spare row below still pins the view.
+ */
+export function captureScrollAnchors(viewport: HTMLElement): ScrollAnchor[] {
+    const viewportRect = viewport.getBoundingClientRect()
+    const anchors: ScrollAnchor[] = []
+    for (const message of viewport.querySelectorAll<HTMLElement>(MESSAGE_ANCHOR_SELECTOR)) {
+        const rect = message.getBoundingClientRect()
+        if (rect.bottom <= viewportRect.top) continue
+        anchors.push({ id: message.id, topOffset: rect.top - viewportRect.top })
+        if (anchors.length > SPARE_SCROLL_ANCHORS) break
+    }
+    return anchors
+}
+
+export function restoreScrollAnchors(viewport: HTMLElement, anchors: readonly ScrollAnchor[]): boolean {
+    return anchors.some((anchor) => restoreScrollAnchor(viewport, anchor))
 }
 
 export function restoreScrollAnchor(viewport: HTMLElement, anchor: ScrollAnchor): boolean {
@@ -840,7 +864,7 @@ export function HappyThread(props: {
             // the eventual prepend will preserve that row instead.
             const pending = pendingScrollRef.current
             if (pending && historyLoaderRef.current.runId === pending.runId) {
-                pending.anchor = captureScrollAnchor(viewport)
+                pending.anchors = captureScrollAnchors(viewport)
                 pending.scrollTop = viewport.scrollTop
                 pending.scrollHeight = viewport.scrollHeight
             }
@@ -1335,7 +1359,7 @@ export function HappyThread(props: {
         clearFailureRetryTimer()
         pendingScrollRef.current = {
             runId,
-            anchor: captureScrollAnchor(viewport),
+            anchors: captureScrollAnchors(viewport),
             scrollTop: viewport.scrollTop,
             scrollHeight: viewport.scrollHeight,
             targetHistoryVersion: null
@@ -1611,7 +1635,7 @@ export function HappyThread(props: {
             ) {
                 return
             }
-            const restoredByAnchor = pending.anchor ? restoreScrollAnchor(viewport, pending.anchor) : false
+            const restoredByAnchor = restoreScrollAnchors(viewport, pending.anchors)
             if (!restoredByAnchor) {
                 const delta = viewport.scrollHeight - pending.scrollHeight
                 viewport.scrollTop = pending.scrollTop + delta

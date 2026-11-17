@@ -13,6 +13,7 @@ import {
     locateOutlineTargetMessage,
     prependMissingUserSnapshot,
     restoreScrollAnchor,
+    restoreScrollAnchors,
     shouldLoadOlderForViewport,
     shouldCancelInitialScrollSettling,
     ThreadMessagesById,
@@ -388,6 +389,27 @@ describe('scroll anchor helpers', () => {
 
         expect(restoreScrollAnchor(viewport, { id: 'anchored-message', topOffset: 30 })).toBe(true)
         expect(viewport.scrollTop).toBe(250)
+
+        viewport.remove()
+    })
+
+    it('falls back to a lower row when the top row was renamed by the prepend', () => {
+        const viewport = document.createElement('div')
+        const second = document.createElement('div')
+        second.id = 'second-row'
+        viewport.append(second)
+        document.body.append(viewport)
+        viewport.scrollTop = 900
+
+        vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(rect({ top: 100, bottom: 500 }))
+        vi.spyOn(second, 'getBoundingClientRect').mockReturnValue(rect({ top: 340, bottom: 400 }))
+
+        // The grouped top row now has a different id; the second one is still there.
+        expect(restoreScrollAnchors(viewport, [
+            { id: 'top-row-before-prepend', topOffset: 0 },
+            { id: 'second-row', topOffset: 120 }
+        ])).toBe(true)
+        expect(viewport.scrollTop).toBe(1020)
 
         viewport.remove()
     })
