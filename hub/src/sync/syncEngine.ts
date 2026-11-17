@@ -12,7 +12,7 @@ import {
     cliBinaryUpdatedOnDisk,
     isMachineCapabilitySkewed,
 } from '@hapi/protocol/runnerCapabilities'
-import type { CursorChatStoreStatus, CursorMigrateOutcome, CursorMigrateToAcpRequest, MessageDeliveryMode, MessagesResponse, QueuedStateResponse, RemoveWorktreeRequest, RemoveWorktreeResponse, SlashCommandsResponse } from '@hapi/protocol/apiTypes'
+import type { CursorChatStoreStatus, CursorMigrateOutcome, CursorMigrateToAcpRequest, MessageDeliveryMode, MessagesResponse, QueuedStateResponse, RemoveWorktreeRequest, UserTurn, RemoveWorktreeResponse, SlashCommandsResponse } from '@hapi/protocol/apiTypes'
 import type { SteerQueuedMessageResponse } from '@hapi/protocol/schemas'
 import type { AgentFlavor, CodexCollaborationMode, CopilotAgentMode, DecryptedMessage, PermissionMode, Session, SyncEvent } from '@hapi/protocol/types'
 import { unwrapRoleWrappedRecordEnvelope, type BackgroundTaskCounts } from '@hapi/protocol/messages'
@@ -408,6 +408,10 @@ export class SyncEngine {
 
     getQueuedState(sessionId: string, localIds: string[]): QueuedStateResponse {
         return this.messageService.getQueuedState(sessionId, localIds)
+    }
+
+    getUserTurns(sessionId: string): UserTurn[] {
+        return this.messageService.getUserTurns(sessionId)
     }
 
     getSessionExport(sessionId: string, session: Session, options?: { force?: boolean }): HapiSessionExportResult {

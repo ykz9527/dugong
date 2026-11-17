@@ -11,6 +11,7 @@ import {
     getMessageWindowState,
     getQueuedReconcileCandidateLocalIds,
     ingestIncomingMessages,
+    loadTurnWindow,
     markMessagesConsumed,
     reconcileQueuedLocalIds,
     removeOptimisticMessage,
@@ -1343,6 +1344,74 @@ describe('optimistic and queued-message operations', () => {
         removeOptimisticMessage(id, 'local-1')
 
         expect(getMessageWindowState(id).messages).toEqual([])
+    })
+})
+
+describe('opening one turn from the outline', () => {
+    function rows(from: number, to: number): DecryptedMessage[] {
+        return Array.from({ length: to - from + 1 }, (_, index) =>
+            makeAgentMessage({ id: `row-${from + index}`, seq: from + index, at: (from + index) * 10 })
+        )
+    }
+
+    it('reads back from the next turn until the target turn is loaded', async () => {
+        const id = sessionId('open-turn')
+        const getMessages = vi.fn()
+            .mockResolvedValueOnce(beforeResponse(rows(301, 499), {
+                hasMore: true, nextBeforeAt: 3_010, nextBeforeSeq: 301
+            }))
+            .mockResolvedValueOnce(beforeResponse(rows(101, 300), {
+                hasMore: true, nextBeforeAt: 1_010, nextBeforeSeq: 101
+            }))
+        appendOptimisticMessage(id, makeUserMessage({
+            id: 'local-waiting', localId: 'local-waiting', createdAt: 9_000, invokedAt: null, status: 'queued'
+        }))
+
+        const opened = await loadTurnWindow(createApi(getMessages), id, { at: 2_000, seq: 200 }, { at: 5_000, seq: 500 })
+
+        expect(opened).toBe(true)
+        expect(getMessages.mock.calls.map((call) => call[1])).toEqual([
+            { beforeAt: 5_000, beforeSeq: 500, limit: 200 },
+            { beforeAt: 3_010, beforeSeq: 301, limit: 200 }
+        ])
+        const state = getMessageWindowState(id)
+        expect(state.viewMode).toBe('history')
+        expect(state.oldestSeq).toBe(101)
+        expect(state.newestSeq).toBe(499)
+        expect(state.hasMore).toBe(true)
+        // Queued sends stay pinned, as in every other window.
+        expect(state.messages.some((message) => message.id === 'local-waiting')).toBe(true)
+    })
+
+    it('keeps the opened turn while live rows arrive and the connection resyncs', async () => {
+        const id = sessionId('open-turn-live')
+        const getMessages = vi.fn().mockResolvedValueOnce(beforeResponse(rows(1, 900).slice(-200), {
+            hasMore: true, nextBeforeAt: 7_010, nextBeforeSeq: 701
+        }))
+        const api = createApi(getMessages)
+        await loadTurnWindow(api, id, { at: 8_000, seq: 800 }, { at: 9_010, seq: 901 })
+        const opened = getMessageWindowState(id).messages.map((message) => message.id)
+
+        ingestIncomingMessages(id, [makeAgentMessage({ id: 'live', seq: 5_000, at: 50_000 })])
+        await syncTailMessages(api, id, { ensureAfterCurrent: true })
+
+        expect(getMessageWindowState(id).messages.map((message) => message.id)).toEqual(opened)
+        expect(getMessages).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not trim a long history window below its size for a live row', () => {
+        const id = sessionId('history-no-shrink')
+        ingestIncomingMessages(id, rows(1, 400))
+        setMessageViewMode(id, 'history')
+        ingestIncomingMessages(id, rows(401, 700))
+        expect(getMessageWindowState(id).messages).toHaveLength(HISTORY_WINDOW_SIZE)
+
+        ingestIncomingMessages(id, [makeAgentMessage({ id: 'one-more', seq: 701, at: 7_010 })])
+
+        // Already cut off from the latest rows: the live row stays out and the
+        // history on screen stays whole.
+        expect(getMessageWindowState(id).messages).toHaveLength(HISTORY_WINDOW_SIZE)
+        expect(getMessageWindowState(id).messages.at(0)?.id).toBe('row-1')
     })
 })
 

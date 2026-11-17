@@ -1,4 +1,7 @@
 import type { ChatBlock, UserTextBlock } from '@/chat/types'
+import type { UserTurn } from '@/types/api'
+
+type Position = { at: number; seq: number }
 
 export type ConversationOutlineItem = {
     id: string
@@ -6,6 +9,8 @@ export type ConversationOutlineItem = {
     kind: 'user'
     label: string
     createdAt: number
+    /** Set for a turn that is not loaded: open the window on it first. */
+    jumpTo?: { target: Position; end: Position | null }
 }
 
 const MAX_OUTLINE_LABEL_LENGTH = 96
@@ -52,4 +57,43 @@ export function buildConversationOutline(blocks: readonly ChatBlock[]): Conversa
 
 export function getConversationMessageAnchorId(messageId: string): string {
     return `hapi-message-${messageId}`
+}
+
+/**
+ * The outline over the whole session: every turn the hub lists, using the
+ * loaded row where the window has it, and a jump for the rest. Loaded user
+ * messages the list does not have yet (sent after it was fetched) are kept.
+ */
+export function mergeOutlineWithTurns(
+    loaded: readonly ConversationOutlineItem[],
+    turns: readonly UserTurn[] | undefined
+): ConversationOutlineItem[] {
+    if (!turns || turns.length === 0) {
+        return [...loaded]
+    }
+    const loadedByTarget = new Map(loaded.map((item) => [item.targetMessageId, item]))
+    const merged: ConversationOutlineItem[] = []
+    turns.forEach((turn, index) => {
+        const targetMessageId = `user-text:${turn.id}`
+        const inWindow = loadedByTarget.get(targetMessageId)
+        if (inWindow) {
+            merged.push(inWindow)
+            loadedByTarget.delete(targetMessageId)
+            return
+        }
+        const next = turns[index + 1]
+        merged.push({
+            id: `outline:turn:${turn.id}`,
+            targetMessageId,
+            kind: 'user',
+            label: truncateOutlineLabel(turn.text) || 'Empty message',
+            createdAt: turn.at,
+            jumpTo: {
+                target: { at: turn.at, seq: turn.seq },
+                end: next ? { at: next.at, seq: next.seq } : null
+            }
+        })
+    })
+    merged.push(...loadedByTarget.values())
+    return merged
 }

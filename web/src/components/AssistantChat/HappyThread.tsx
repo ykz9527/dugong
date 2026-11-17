@@ -24,7 +24,7 @@ import { ShareTurnDialog } from '@/components/AssistantChat/ShareTurnDialog'
 import { getSessionModelLabel } from '@/lib/sessionModelLabel'
 import { getSessionTitle } from '@/lib/sessionTitle'
 import { isFastServiceTier } from '@/components/AssistantChat/codexFastMode'
-import type { OlderLoadOutcome } from '@/lib/message-window-store'
+import type { MessagePosition, OlderLoadOutcome } from '@/lib/message-window-store'
 import { useSessionHeaderMetadata } from '@/hooks/useSessionHeaderMetadata'
 import { useMachines } from '@/hooks/queries/useMachines'
 import { useMachineLabels } from '@/hooks/useMachineLabels'
@@ -143,6 +143,8 @@ const WHEEL_GESTURE_GAP_MS = 250
 const KEYBOARD_SCROLL_INTENT_WINDOW_MS = 750
 const POINTER_CANCEL_INTENT_WINDOW_MS = 750
 const UPWARD_SCROLL_KEYS = new Set(['ArrowUp', 'PageUp', 'Home'])
+const DOWNWARD_SCROLL_KEYS = new Set(['ArrowDown', 'PageDown', 'End', ' '])
+const TOUCH_MOMENTUM_WINDOW_MS = 2500
 
 export function getPullToLoadState(distancePx: number): PullToLoadState {
     if (distancePx >= TOP_PULL_TRIGGER_PX) {
@@ -236,6 +238,53 @@ export async function locateOutlineTargetMessage(options: LocateOutlineTargetOpt
         target = options.findTarget(anchorId)
     }
     return target
+}
+
+/**
+ * Keep `element` at the top of `viewport` while the freshly loaded rows above
+ * it finish laying out (collapsed groups can shrink after the first paint and
+ * drag it out of view). Stops at the first sign of the person scrolling.
+ */
+function holdAtTop(viewport: HTMLElement, element: HTMLElement, durationMs = 1500): void {
+    let stopped = false
+    const stop = () => {
+        stopped = true
+    }
+    const viewportEvents = ['wheel', 'touchstart', 'pointerdown'] as const
+    for (const type of viewportEvents) viewport.addEventListener(type, stop, { passive: true })
+    window.addEventListener('keydown', stop)
+    const deadline = Date.now() + durationMs
+    const tick = () => {
+        if (!stopped && element.isConnected) {
+            const offset = element.getBoundingClientRect().top - viewport.getBoundingClientRect().top
+            if (Math.abs(offset) > 1) {
+                viewport.scrollTop += offset
+            }
+        }
+        if (!stopped && Date.now() < deadline) {
+            requestAnimationFrame(tick)
+            return
+        }
+        for (const type of viewportEvents) viewport.removeEventListener(type, stop)
+        window.removeEventListener('keydown', stop)
+    }
+    requestAnimationFrame(tick)
+}
+
+/** Resolve once the row for `anchorId` is rendered, or null after `timeoutMs`. */
+function waitForAnchor(anchorId: string, timeoutMs = 3000): Promise<HTMLElement | null> {
+    const deadline = Date.now() + timeoutMs
+    return new Promise((resolve) => {
+        const check = () => {
+            const element = document.getElementById(anchorId)
+            if (element || Date.now() >= deadline) {
+                resolve(element)
+                return
+            }
+            requestAnimationFrame(check)
+        }
+        check()
+    })
 }
 
 export function shouldLoadOlderForViewport(params: {
@@ -495,6 +544,8 @@ export function HappyThread(props: {
     outlineItems: readonly ConversationOutlineItem[]
     onOutlineOpenChange: (open: boolean) => void
     onOutlineItemClick?: (item: ConversationOutlineItem) => void
+    /** Replace the window with one turn; resolves false if it did not load. */
+    onOpenTurn?: (target: MessagePosition, end: MessagePosition | null) => Promise<boolean>
 }) {
     const { t, locale } = useTranslation()
     const { preferences: headerMetadata } = useSessionHeaderMetadata()
@@ -728,6 +779,12 @@ export function HappyThread(props: {
         let lastWheelAt = 0
         let wheelIntentUntil = 0
         let wheelLatched = false
+        // When the person last moved toward newer rows by hand.
+        let downwardInputUntil = 0
+        const markDownwardInput = (windowMs = KEYBOARD_SCROLL_INTENT_WINDOW_MS) => {
+            downwardInputUntil = Math.max(downwardInputUntil, Date.now() + windowMs)
+        }
+        let touchStartY: number | null = null
 
         const hasExplicitUpwardIntent = (intent: ScrollIntent): boolean => {
             return intent.isScrollingUp && (
@@ -755,6 +812,17 @@ export function HappyThread(props: {
                 return true
             }
             return false
+        }
+
+        // Rows shorter than the viewport cannot scroll, so a downward gesture
+        // never produces a scroll event; read it here as "back to the latest".
+        const leaveHistoryIfUnscrollable = () => {
+            if (atBottomRef.current || viewport.scrollHeight > viewport.clientHeight + 1) {
+                return
+            }
+            tailScrollInProgressRef.current = false
+            setAutoScrollMode(true)
+            setAtBottomMode(true)
         }
 
         const handleScroll = () => {
@@ -818,7 +886,19 @@ export function HappyThread(props: {
                 return
             }
 
-            if (intent.isNearBottom) {
+            // Leave history only when the person scrolls down to the end by
+            // hand. Rows can also land "at the bottom" without that: content
+            // shorter than the viewport, or an older page that pushed the
+            // newest rows out of the window and restored the anchor near the
+            // end. Treating those as "back to the latest" threw people out of
+            // the history they were paging through.
+            const overflows = viewport.scrollHeight > viewport.clientHeight + 1
+            const scrolledDownByHand = overflows && (
+                downwardInputUntil >= Date.now()
+                || pointerResumeActive
+                || pointerResumeUntil >= Date.now()
+            )
+            if (intent.isNearBottom && (atBottomRef.current || scrolledDownByHand)) {
                 tailScrollInProgressRef.current = false
                 setAutoScrollMode(true)
                 setAtBottomMode(true)
@@ -853,6 +933,15 @@ export function HappyThread(props: {
         const handleKeyDown = (event: KeyboardEvent) => {
             if (isNestedScrollEvent(event)) return
             const target = event.target
+            if (
+                DOWNWARD_SCROLL_KEYS.has(event.key)
+                && !(target instanceof HTMLInputElement)
+                && !(target instanceof HTMLTextAreaElement)
+                && !(target instanceof HTMLElement && target.isContentEditable)
+            ) {
+                markDownwardInput()
+                leaveHistoryIfUnscrollable()
+            }
             if (
                 event.defaultPrevented
                 || event.repeat
@@ -934,6 +1023,10 @@ export function HappyThread(props: {
 
         const handleWheel = (event: WheelEvent) => {
             if (isNestedScrollEvent(event)) return
+            if (event.deltaY > 0) {
+                markDownwardInput()
+                leaveHistoryIfUnscrollable()
+            }
             if (event.deltaY >= 0) {
                 wheelIntentUntil = 0
                 return
@@ -957,6 +1050,7 @@ export function HappyThread(props: {
 
         const handleTouchStart = (event: TouchEvent) => {
             if (isNestedScrollEvent(event)) return
+            touchStartY = event.touches[0]?.clientY ?? null
             updatePullToLoadState('idle')
             pullStartY = (
                 viewport.scrollTop <= 0
@@ -971,6 +1065,12 @@ export function HappyThread(props: {
 
         const handleTouchMove = (event: TouchEvent) => {
             if (isNestedScrollEvent(event)) return
+            // Momentum keeps scrolling after the finger lifts.
+            markDownwardInput(TOUCH_MOMENTUM_WINDOW_MS)
+            const touchY = event.touches[0]?.clientY
+            if (touchStartY !== null && touchY !== undefined && touchStartY - touchY > TOP_PULL_TRIGGER_PX) {
+                leaveHistoryIfUnscrollable()
+            }
             if (pullStartY === null) {
                 return
             }
@@ -1401,19 +1501,37 @@ export function HappyThread(props: {
     }, [loadOlderFromConsumer])
 
     const handleOutlineSelect = useCallback(async (item: ConversationOutlineItem) => {
-        const target = await locateOutlineTargetMessage({
-            targetMessageId: item.targetMessageId,
-            findTarget: (anchorId) => document.getElementById(anchorId),
-            hasMoreMessages: () => hasMoreMessagesRef.current,
-            loadOlderPreservingScroll: loadOlderForOutline
-        })
-        if (target) {
-            target.scrollIntoView({ block: 'start', behavior: 'smooth' })
+        const anchorId = getConversationMessageAnchorId(item.targetMessageId)
+        let target = document.getElementById(anchorId)
+        let opened = false
+        if (!target && item.jumpTo && props.onOpenTurn) {
+            // Far from the loaded rows: open the window on that turn rather
+            // than paging back 200 mostly-invisible rows at a time.
             autoScrollEnabledRef.current = false
+            atBottomRef.current = false
+            opened = await props.onOpenTurn(item.jumpTo.target, item.jumpTo.end)
+            if (opened) {
+                target = await waitForAnchor(anchorId)
+            }
+        }
+        if (!target) {
+            target = await locateOutlineTargetMessage({
+                targetMessageId: item.targetMessageId,
+                findTarget: (id) => document.getElementById(id),
+                hasMoreMessages: () => hasMoreMessagesRef.current,
+                loadOlderPreservingScroll: loadOlderForOutline
+            })
+        }
+        if (target) {
+            target.scrollIntoView({ block: 'start', behavior: opened ? 'auto' : 'smooth' })
+            autoScrollEnabledRef.current = false
+            if (opened && viewportRef.current) {
+                holdAtTop(viewportRef.current, target)
+            }
         }
         props.onOutlineItemClick?.(item)
         props.onOutlineOpenChange(false)
-    }, [loadOlderForOutline, props.onOutlineItemClick, props.onOutlineOpenChange])
+    }, [loadOlderForOutline, props.onOpenTurn, props.onOutlineItemClick, props.onOutlineOpenChange])
 
     useEffect(() => {
         if (

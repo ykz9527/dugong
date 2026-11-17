@@ -131,6 +131,17 @@ export type MessagesResponse = {
     }
 }
 
+/** One person-written message of a session, for jumping to any turn. */
+export type UserTurn = {
+    id: string
+    seq: number
+    /** Position key: invokedAt ?? createdAt, the same order pages use. */
+    at: number
+    text: string
+}
+
+export type UserTurnsResponse = { turns: UserTurn[] }
+
 export type MachinesResponse = { machines: Machine[] }
 
 export type SpawnResponse =

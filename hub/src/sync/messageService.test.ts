@@ -527,6 +527,33 @@ describe('MessageService.getQueuedState', () => {
     })
 })
 
+describe('MessageService.getUserTurns', () => {
+    it('lists every person-written message in display order, skipping agent rows and the queue', () => {
+        const store = makeStore()
+        const session = makeSession(store, 'user-turns')
+        const userText = (text: string) => ({ role: 'user', content: { type: 'text', text } })
+        // No localId: stamped as invoked immediately (e.g. the task prompt).
+        const prompt = store.messages.addMessage(session.id, userText('task prompt'), undefined, null, 1_000)
+        store.messages.addMessage(session.id, { role: 'agent', content: { type: 'output', data: { type: 'assistant' } } }, undefined, null, 1_500)
+        const second = store.messages.addMessage(session.id, userText('x'.repeat(500)), 'local-second')
+        const first = store.messages.addMessage(session.id, userText('first follow-up'), 'local-first')
+        store.messages.addMessage(session.id, userText('still queued'), 'local-queued')
+        // Invocation order, not insertion order, is the display order.
+        store.messages.markMessagesInvoked(session.id, ['local-first'], 2_000)
+        store.messages.markMessagesInvoked(session.id, ['local-second'], 3_000)
+
+        const turns = new MessageService(store, makeIo(() => {}), makePublisher() as any).getUserTurns(session.id)
+
+        expect(turns.map((turn) => [turn.id, turn.seq, turn.at])).toEqual([
+            [prompt.id, prompt.seq, 1_000],
+            [first.id, first.seq, 2_000],
+            [second.id, second.seq, 3_000]
+        ])
+        expect(turns[0]?.text).toBe('task prompt')
+        expect(turns[2]?.text).toHaveLength(200)
+    })
+})
+
 describe('MessageService.cancelQueuedMessage race scenarios', () => {
     describe('indeterminate cancel recheck', () => {
         it('returns invoked when consumption wins during the cancel ACK wait', async () => {

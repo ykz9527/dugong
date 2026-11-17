@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useNavigate } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
 import { PRESERVE_SESSION_SIDEBAR_SCROLL } from '@/lib/sessionNavigation'
 import { AssistantRuntimeProvider, useAui, useAuiState } from '@assistant-ui/react'
 import { DragDropZone } from '@/components/AssistantChat/DragDropZone'
@@ -20,7 +21,7 @@ import type { Suggestion } from '@/hooks/useActiveSuggestions'
 import { normalizeDecryptedMessage } from '@/chat/normalize'
 import { reduceChatBlocks } from '@/chat/reducer'
 import { reconcileChatBlocks } from '@/chat/reconcile'
-import { buildConversationOutline } from '@/chat/outline'
+import { buildConversationOutline, mergeOutlineWithTurns } from '@/chat/outline'
 import { buildVisibleChatBlocks, isToolGroupBlock, type ToolGroupBlock } from '@/chat/toolGroups'
 import { useUnseenBlockCount } from '@/hooks/useUnseenBlockCount'
 import { useCodexExplorationCollapse } from '@/hooks/useCodexExplorationCollapse'
@@ -55,7 +56,8 @@ import {
 } from '@/lib/messageDelivery'
 import type { MessageDeliveryMode } from '@hapi/protocol'
 import { isSteeringSupportedForSession } from '@hapi/protocol'
-import type { OlderLoadOutcome } from '@/lib/message-window-store'
+import { loadTurnWindow, type MessagePosition, type OlderLoadOutcome } from '@/lib/message-window-store'
+import { queryKeys } from '@/lib/query-keys'
 import { createAttachmentAdapter } from '@/lib/attachmentAdapter'
 import { ShareSeedConsumer } from '@/components/ShareSeedConsumer'
 import {
@@ -1399,9 +1401,21 @@ function SessionChatInner(props: SessionChatProps) {
     // tool_result pair is one card.
     const unseenCount = useUnseenBlockCount(props.viewMode, visibleBlocks)
 
+    // The window holds only the latest rows; the outline lists every turn of
+    // the session so an early one can be opened directly.
+    const userTurns = useQuery({
+        queryKey: queryKeys.userTurns(props.session.id),
+        queryFn: () => props.api.getUserTurns(props.session.id),
+        enabled: outlineOpen,
+        staleTime: 0,
+    })
     const outlineItems = useMemo(
-        () => buildConversationOutline(reconciled.blocks),
-        [reconciled.blocks]
+        () => mergeOutlineWithTurns(buildConversationOutline(reconciled.blocks), userTurns.data?.turns),
+        [reconciled.blocks, userTurns.data]
+    )
+    const handleOpenTurn = useCallback(
+        (target: MessagePosition, end: MessagePosition | null) => loadTurnWindow(props.api, props.session.id, target, end),
+        [props.api, props.session.id]
     )
 
     // Permission mode change handler
@@ -1889,6 +1903,7 @@ function SessionChatInner(props: SessionChatProps) {
                         outlineOpen={outlineOpen}
                         outlineItems={outlineItems}
                         onOutlineOpenChange={setOutlineOpen}
+                        onOpenTurn={handleOpenTurn}
                     />
                     </div>
 

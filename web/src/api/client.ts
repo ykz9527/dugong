@@ -14,6 +14,7 @@ import type {
     FileSearchResponse,
     MachinesResponse,
     MessagesResponse,
+    UserTurnsResponse,
     PermissionMode,
     ClaudeImportSessionsResponse,
     ClaudeLocalSessionsResponse,
@@ -751,6 +752,12 @@ export class ApiClient {
                 deliveryMode: deliveryMode ?? undefined,
             })
         })
+    }
+
+    async getUserTurns(sessionId: string): Promise<UserTurnsResponse> {
+        return await this.request<UserTurnsResponse>(
+            `/api/sessions/${encodeURIComponent(sessionId)}/messages/user-turns`
+        )
     }
 
     async getQueuedState(sessionId: string, localIds: string[]): Promise<QueuedStateResponse> {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentEvent, ChatBlock } from '@/chat/types'
-import { buildConversationOutline, truncateOutlineLabel } from '@/chat/outline'
+import { buildConversationOutline, mergeOutlineWithTurns, truncateOutlineLabel } from '@/chat/outline'
 
 function userBlock(
     id: string,
@@ -82,5 +82,34 @@ describe('conversation outline', () => {
             'outline:user-text:first',
             'outline:user-text:second'
         ])
+    })
+})
+
+describe('mergeOutlineWithTurns', () => {
+    it('lists every turn, reusing loaded rows and jumping to the rest', () => {
+        const loaded = buildConversationOutline([
+            userBlock('m3', 'third, loaded', 3_000),
+            userBlock('m4', 'sent after the list was fetched', 4_000)
+        ])
+        const turns = [
+            { id: 'm1', seq: 1, at: 1_000, text: 'first' },
+            { id: 'm2', seq: 50, at: 2_000, text: 'second' },
+            { id: 'm3', seq: 90, at: 3_000, text: 'third, loaded' }
+        ]
+
+        const items = mergeOutlineWithTurns(loaded, turns)
+
+        expect(items.map((item) => item.targetMessageId)).toEqual([
+            'user-text:m1', 'user-text:m2', 'user-text:m3', 'user-text:m4'
+        ])
+        expect(items[0]?.jumpTo).toEqual({ target: { at: 1_000, seq: 1 }, end: { at: 2_000, seq: 50 } })
+        expect(items[1]?.jumpTo).toEqual({ target: { at: 2_000, seq: 50 }, end: { at: 3_000, seq: 90 } })
+        expect(items[2]).toBe(loaded[0])
+        expect(items[3]).toBe(loaded[1])
+    })
+
+    it('falls back to the loaded rows before the list arrives', () => {
+        const loaded = buildConversationOutline([userBlock('m1', 'only', 1_000)])
+        expect(mergeOutlineWithTurns(loaded, undefined)).toEqual(loaded)
     })
 })

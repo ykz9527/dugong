@@ -42,9 +42,12 @@ export const VISIBLE_WINDOW_SIZE = 400
 export const HISTORY_WINDOW_SIZE = 600
 const AGENT_RUN_WINDOW_SIZE = 800
 const OLDER_LOAD_WINDOW_SIZE = 800
+// A window opened on one turn holds the whole turn, up to this many rows;
+// subagent-heavy turns run to a few thousand.
+const TURN_WINDOW_CAP = 3000
 const PAGE_SIZE = 200
 
-type MessagePosition = {
+export type MessagePosition = {
     at: number
     seq: number
 }
@@ -571,6 +574,14 @@ function mergeIntoWindow(
     return next
 }
 
+/** While someone reads history, newer rows never trim away what is on screen
+ *  (e.g. a whole turn opened from the outline); tail mode keeps its default. */
+function readingLimit(previous: InternalState): number | undefined {
+    return previous.viewMode === 'history'
+        ? Math.min(Math.max(HISTORY_WINDOW_SIZE, previous.messages.length), TURN_WINDOW_CAP)
+        : undefined
+}
+
 function pagePosition(at: number | null, seq: number | null): MessagePosition | null {
     return at !== null && seq !== null ? { at, seq } : null
 }
@@ -660,6 +671,14 @@ function finishTailSync(sessionId: string, generation: number, warning: string |
 }
 
 async function runTailSync(api: ApiClient, sessionId: string): Promise<void> {
+    // The person is reading history cut off from the latest messages (a turn
+    // opened from the outline, or older pages that pushed the newest rows
+    // out). A reconnect must not swap it for the latest page; the tail
+    // catches up when they go back down. A lost epoch still resets.
+    const current = getState(sessionId)
+    if (current.viewMode === 'history' && current.requiresLatestReset && current.epoch !== null) {
+        return
+    }
     const generation = beginTailSync(sessionId)
     try {
         const initial = getState(sessionId)
@@ -722,7 +741,8 @@ async function runTailSync(api: ApiClient, sessionId: string): Promise<void> {
             updateState(sessionId, (previous) => {
                 if (previous.syncGeneration !== generation) return previous
                 const merged = mergeIntoWindow(previous, response.messages, {
-                    advanceTailRevision: true
+                    advanceTailRevision: true,
+                    regularLimit: readingLimit(previous)
                 })
                 if (merged.requiresLatestReset) {
                     return buildState(merged, {
@@ -974,7 +994,12 @@ export async function fetchOlderMessages(
             }
             const merged = mergeIntoWindow(previous, response.messages, {
                 mode: 'prepend',
-                regularLimit: OLDER_LOAD_WINDOW_SIZE
+                // Never cut a window opened on a long turn below its size:
+                // the rows dropped here would be that turn's reply.
+                regularLimit: Math.min(
+                    Math.max(OLDER_LOAD_WINDOW_SIZE, previous.messages.length),
+                    TURN_WINDOW_CAP
+                )
             })
             historyVersion = nextHistoryVersion
             return buildState(merged, {
@@ -1014,6 +1039,98 @@ export async function fetchOlderMessages(
     }
 }
 
+/**
+ * Replace the window with one whole turn: from the person's message at
+ * `target` up to (not including) `end`, the next person-written message, or
+ * up to the latest message when `end` is null. Long sessions are mostly tool
+ * and subagent rows, so paging back 200 rows per scroll rarely reaches an
+ * early turn; this lets the outline open any turn directly, reply included.
+ * Pages are read backwards from `end`, so a turn longer than the cap keeps
+ * its end, where the reply is, and scrolling up continues from there.
+ */
+export async function loadTurnWindow(
+    api: ApiClient,
+    sessionId: string,
+    target: MessagePosition,
+    end: MessagePosition | null
+): Promise<boolean> {
+    let generation = 0
+    updateState(sessionId, (previous) => {
+        generation = previous.olderGeneration + 1
+        return buildState(previous, {
+            olderGeneration: generation,
+            // Results of a tail sync already in flight belong to the old window.
+            syncGeneration: previous.syncGeneration + 1,
+            isSyncingTail: false,
+            isLoadingMore: true,
+            warning: null
+        })
+    }, true)
+
+    const rows: DecryptedMessage[] = []
+    let last: MessagesResponse | null = null
+    let before = end
+    try {
+        while (true) {
+            const response: MessagesResponse = await api.getMessages(sessionId, before
+                ? { beforeAt: before.at, beforeSeq: before.seq, limit: PAGE_SIZE }
+                : { limit: PAGE_SIZE })
+            if (getState(sessionId).olderGeneration !== generation) return false
+            last = response
+            rows.push(...response.messages)
+            const next = pagePosition(response.page.nextBeforeAt, response.page.nextBeforeSeq)
+            if (
+                !response.page.hasMore
+                || !next
+                || comparePosition(next, target) <= 0
+                || rows.length >= TURN_WINDOW_CAP
+            ) {
+                break
+            }
+            before = next
+        }
+    } catch (error) {
+        updateState(sessionId, (previous) => {
+            if (previous.olderGeneration !== generation) return previous
+            return buildState(previous, {
+                isLoadingMore: false,
+                warning: error instanceof Error ? error.message : 'Failed to load messages'
+            })
+        }, true)
+        return false
+    }
+
+    const page = last
+    updateState(sessionId, (previous) => {
+        if (previous.olderGeneration !== generation || !page) return previous
+        const oldest = pagePosition(page.page.nextBeforeAt, page.page.nextBeforeSeq)
+        const newest = end === null
+            ? pagePosition(page.page.snapshotHeadAt, page.page.snapshotHeadSeq) ?? derivePosition(rows, 'newest')
+            : null
+        return buildState(previous, {
+            // Unsent and queued rows stay pinned, as every other window keeps them.
+            messages: mergeMessages(
+                dropSupersededReasoningSnapshots(rows.filter(shouldRetainWindowMessage)),
+                previous.messages.filter((message) => isQueuedForInvocation(message) || message.status === 'failed')
+            ),
+            viewMode: 'history',
+            hasMore: page.page.hasMore,
+            epoch: page.page.epoch,
+            oldestPositionAt: oldest?.at ?? null,
+            oldestPositionSeq: oldest?.seq ?? null,
+            newestPositionAt: newest?.at ?? null,
+            newestPositionSeq: newest?.seq ?? null,
+            // Cut off from the latest messages until the person goes back down.
+            requiresLatestReset: end !== null,
+            preferLatestOnActivation: false,
+            isLoadingMore: false,
+            tailRevision: previous.tailRevision + 1,
+            warning: null
+        })
+    }, true)
+    return true
+}
+
 export function cancelOlderMessageLoad(sessionId: string): void {
     updateState(sessionId, (previous) => {
         if (!previous.isLoadingMore) {
@@ -1042,8 +1159,16 @@ export function setMessageViewMode(sessionId: string, mode: MessageViewMode): vo
 export function ingestIncomingMessages(sessionId: string, incoming: DecryptedMessage[]): void {
     if (incoming.length === 0) return
     updateState(sessionId, (previous) => {
-        let merged = mergeIntoWindow(previous, incoming, {
-            advanceTailRevision: true
+        const reading = previous.viewMode === 'history'
+        // A history window already cut off from the latest messages has a gap
+        // before anything live; only always-pinned queued sends belong in it.
+        const accepted = reading && previous.requiresLatestReset
+            ? incoming.filter(isQueuedForInvocation)
+            : incoming
+        if (accepted.length === 0) return previous
+        let merged = mergeIntoWindow(previous, accepted, {
+            advanceTailRevision: true,
+            regularLimit: readingLimit(previous)
         })
         if (merged.epoch === null || merged.requiresLatestReset) {
             return merged

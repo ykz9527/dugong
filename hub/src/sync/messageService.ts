@@ -12,7 +12,7 @@ import {
     unwrapRoleWrappedRecordEnvelope
 } from '@hapi/protocol/messages'
 import { isObject } from '@hapi/protocol'
-import type { MessageDeliveryMode, MessagesResponse, QueuedStateResponse } from '@hapi/protocol/apiTypes'
+import type { MessageDeliveryMode, MessagesResponse, QueuedStateResponse, UserTurn } from '@hapi/protocol/apiTypes'
 import type { Server } from 'socket.io'
 import { randomUUID } from 'node:crypto'
 import type { Store, CancelQueuedMessageResult } from '../store'
@@ -51,6 +51,16 @@ function toDecryptedMessage(message: StoredMessageForDelivery): DecryptedMessage
 
 function toVisibleDecryptedMessages(messages: StoredMessageForDelivery[]): DecryptedMessage[] {
     return messages.filter(isWebVisibleStoredMessage).map(toDecryptedMessage)
+}
+
+const USER_TURN_TEXT_LIMIT = 200
+
+/** The text of a person-written message, or null for anything else. */
+function userTurnText(content: unknown): string | null {
+    if (!isObject(content) || content.role !== 'user') return null
+    const inner = content.content
+    if (!isObject(inner) || inner.type !== 'text' || typeof inner.text !== 'string') return null
+    return inner.text
 }
 
 function jsonByteLength(value: unknown): number {
@@ -190,6 +200,29 @@ export class MessageService {
     getMessages(sessionId: string, limit: number = 200): DecryptedMessage[] {
         const stored = this.store.messages.getMessages(sessionId, limit)
         return toVisibleDecryptedMessages(stored)
+    }
+
+    /**
+     * Every person-written message of the session, oldest first. Long
+     * sessions are mostly tool and subagent events, so paging back 200 rows
+     * at a time rarely reaches an early turn; this list lets the web jump to
+     * any of them. Messages still waiting in the queue are left out: they are
+     * not part of the conversation yet.
+     */
+    getUserTurns(sessionId: string): UserTurn[] {
+        const turns: UserTurn[] = []
+        for (const message of this.store.messages.getAllMessages(sessionId)) {
+            if (message.invokedAt === null) continue
+            const text = userTurnText(message.content)
+            if (text === null) continue
+            turns.push({
+                id: message.id,
+                seq: message.seq,
+                at: message.invokedAt,
+                text: text.length > USER_TURN_TEXT_LIMIT ? text.slice(0, USER_TURN_TEXT_LIMIT) : text
+            })
+        }
+        return turns.sort((a, b) => a.at !== b.at ? a.at - b.at : a.seq - b.seq)
     }
 
     getQueuedState(sessionId: string, localIds: string[]): QueuedStateResponse {

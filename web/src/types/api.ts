@@ -36,6 +36,8 @@ export type {
     AuthResponse,
     MachinesResponse,
     MessagesResponse,
+    UserTurn,
+    UserTurnsResponse,
     OpencodeModelsResponse,
     OpencodeModelSummary,
     PathExistsResponse,
