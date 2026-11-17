@@ -1347,6 +1347,30 @@ describe('optimistic and queued-message operations', () => {
     })
 })
 
+describe('catching up after a long absence', () => {
+    it('fetches the latest page instead of paging through every missed message', async () => {
+        const id = sessionId('far-behind')
+        const getMessages = vi.fn()
+            .mockResolvedValueOnce(latestResponse([makeAgentMessage({ id: 'old-tail', seq: 10, at: 10 })], { epoch: 1 }))
+            .mockResolvedValueOnce(afterResponse(
+                Array.from({ length: 200 }, (_, index) => makeAgentMessage({ id: `missed-${index}`, seq: 11 + index, at: 11 + index })),
+                { epoch: 1, hasMore: true, nextAfterAt: 210, nextAfterSeq: 210, snapshotHeadAt: 3_000, snapshotHeadSeq: 3_000 }
+            ))
+            .mockResolvedValueOnce(latestResponse(
+                [makeAgentMessage({ id: 'newest', seq: 3_000, at: 3_000 })],
+                { epoch: 1, hasMore: true, nextBeforeAt: 3_000, nextBeforeSeq: 3_000 }
+            ))
+        const api = createApi(getMessages)
+        await syncTailMessages(api, id)
+        await syncTailMessages(api, id, { ensureAfterCurrent: true })
+
+        expect(getMessages).toHaveBeenCalledTimes(3)
+        expect(getMessages.mock.calls[2]?.[1]).toEqual({ limit: 200 })
+        expect(getMessageWindowState(id).messages.map((message) => message.id)).toEqual(['newest'])
+        expect(getMessageWindowState(id).hasMore).toBe(true)
+    })
+})
+
 describe('opening one turn from the outline', () => {
     function rows(from: number, to: number): DecryptedMessage[] {
         return Array.from({ length: to - from + 1 }, (_, index) =>

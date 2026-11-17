@@ -761,6 +761,29 @@ async function runTailSync(api: ApiClient, sessionId: string): Promise<void> {
 
             const nextAfter = pagePosition(response.page.nextAfterAt, response.page.nextAfterSeq)
             const snapshotHead = pagePosition(response.page.snapshotHeadAt, response.page.snapshotHeadSeq)
+            if (
+                until === null
+                && snapshotHead
+                && response.page.hasMore
+                && getState(sessionId).viewMode === 'tail'
+                && snapshotHead.seq - after.seq > VISIBLE_WINDOW_SIZE
+            ) {
+                // Far behind, e.g. a phone that slept through a long turn. The
+                // tail window keeps only the newest rows, so fetch those rather
+                // than page through every missed message (thousands of rows,
+                // tool output included) just to drop them again.
+                const latestBaseline = new Map(getState(sessionId).messages.map((message) => [message.id, message]))
+                const latest = await api.getMessages(sessionId, { limit: PAGE_SIZE })
+                if (!isCurrentTailSync(sessionId, generation)) return
+                updateState(sessionId, (previous) => {
+                    if (previous.syncGeneration !== generation) return previous
+                    return applyLatestResponse(previous, latest, {
+                        replaceServerRows: true,
+                        requestBaseline: latestBaseline
+                    })
+                })
+                break
+            }
             if (until === null) {
                 until = snapshotHead
             }
