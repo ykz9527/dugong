@@ -66,6 +66,21 @@ export function decodeGeneratedImageBase64(data: string): Buffer | null {
 const generatedImages = new Map<string, GeneratedImageMetadata>()
 let generatedImageBytes = 0
 
+type GeneratedImageListener = (image: GeneratedImageMetadata) => void
+const registrationListeners = new Set<GeneratedImageListener>()
+
+/**
+ * Called for every media item registered from now on. The session client
+ * pushes each one to the hub, which keeps a copy: this registry lives in
+ * process memory and is gone once the session process restarts.
+ */
+export function onGeneratedImageRegistered(listener: GeneratedImageListener): () => void {
+    registrationListeners.add(listener)
+    return () => {
+        registrationListeners.delete(listener)
+    }
+}
+
 export function detectImageMimeType(bytes: Uint8Array): string | null {
     if (bytes.length >= 8
         && bytes[0] === 0x89
@@ -332,6 +347,14 @@ export function registerGeneratedImage(args: { id: string; path: string; mimeTyp
     generatedImageBytes += content.byteLength
 
     evictOldGeneratedImages()
+
+    for (const listener of registrationListeners) {
+        try {
+            listener(metadata)
+        } catch {
+            // A failed push only costs the hub its copy; the CLI still serves it.
+        }
+    }
 
     return metadata
 }

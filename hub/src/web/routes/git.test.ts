@@ -1,16 +1,27 @@
-import { describe, expect, it } from 'bun:test'
+import { afterAll, describe, expect, it } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { Hono } from 'hono'
 import type { Session, SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { createGitRoutes } from './git'
 
-function buildApp(engine: Partial<SyncEngine>): Hono<WebAppEnv> {
+// Generated media the route keeps a copy of lands here, never in a real home.
+const mediaHomes: string[] = []
+afterAll(() => {
+    for (const home of mediaHomes) rmSync(home, { recursive: true, force: true })
+})
+
+function buildApp(engine: Partial<SyncEngine>, generatedMediaHome?: string): Hono<WebAppEnv> {
+    const home = generatedMediaHome ?? mkdtempSync(join(tmpdir(), 'git-routes-media-'))
+    if (!generatedMediaHome) mediaHomes.push(home)
     const app = new Hono<WebAppEnv>()
     app.use('*', async (c, next) => {
         c.set('namespace', 'default')
         await next()
     })
-    app.route('/api', createGitRoutes(() => engine as SyncEngine))
+    app.route('/api', createGitRoutes(() => engine as SyncEngine, { generatedMediaHome: home }))
     return app
 }
 
@@ -37,6 +48,27 @@ describe('generated images route', () => {
         expect(cacheControl).toContain('immutable')
         expect(cacheControl).not.toContain('no-store')
         expect(response.headers.get('etag')).toBe('"img-1"')
+    })
+
+    it('keeps serving an image after the session process has lost it', async () => {
+        const home = mkdtempSync(join(tmpdir(), 'git-routes-media-'))
+        mediaHomes.push(home)
+        const session = { id: 'session-1', namespace: 'default', active: true } as unknown as Session
+        let processHasIt = true
+        const engine = {
+            resolveSessionAccess: () => ({ ok: true as const, sessionId: 'session-1', session }),
+            readGeneratedImage: async () => processHasIt
+                ? { success: true, content: Buffer.from('png-bytes').toString('base64'), mimeType: 'image/png', fileName: 'shot.png' }
+                : { success: false, error: 'Generated image not found' }
+        } as unknown as Partial<SyncEngine>
+
+        expect((await buildApp(engine, home).request('/api/sessions/session-1/generated-images/img-1')).status).toBe(200)
+        processHasIt = false
+
+        const again = await buildApp(engine, home).request('/api/sessions/session-1/generated-images/img-1')
+        expect(again.status).toBe(200)
+        expect(Buffer.from(await again.arrayBuffer()).toString()).toBe('png-bytes')
+        expect(again.headers.get('content-type')).toBe('image/png')
     })
 
     it('returns 304 without an RPC round-trip when If-None-Match matches', async () => {

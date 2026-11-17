@@ -526,6 +526,7 @@ export default {
   'media.displayed.file': '展示文件',
   'media.displayed.header': '{label}：{fileName}',
   'media.displayed.unavailable': '{label}不可用：{error}',
+  'media.displayed.gone': '{label}已经找不到了：生成它的会话进程已结束，当时没有留存副本。',
 
   // Tool card
   'tool.askQuestion': '其他',

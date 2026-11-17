@@ -296,6 +296,9 @@ export interface ClientToServerEvents {
     'session-ready': (data: { sid: string; time: number }) => void
     'session-end': (data: { sid: string; time: number; reason?: SessionEndReason }) => void
     'messages-consumed': (data: { sid: string; localIds: string[]; clearQueuedThinkingGrace?: boolean; steered?: boolean }) => void
+    // Media the agent just generated, pushed so the hub keeps a copy that
+    // outlives the session process (base64 `content`).
+    'generated-media': (data: { sid: string; id: string; mimeType: string; fileName: string; content: string }) => void
     'messages-indeterminate': (data: { sid: string; localIds: string[] }) => void
     'messages-steer-state': (data: { sid: string; localIds: string[]; state: 'queued' | 'dispatching' }, cb: (response: { ok: boolean }) => void) => void
     'update-metadata': (data: { sid: string; expectedVersion: number; metadata: unknown }, cb: (answer: UpdateMetadataAck) => void) => void

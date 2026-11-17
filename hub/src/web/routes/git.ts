@@ -4,6 +4,8 @@ import { z } from 'zod'
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireSessionFromParam, requireSyncEngine } from './guards'
+import { readGeneratedMedia, saveGeneratedMedia } from '../../generatedMedia/store'
+import { getHapiHomeDir } from '../../scratchlistAttachments/storage'
 
 const fileSearchSchema = z.object({
     query: z.string().optional(),
@@ -59,8 +61,12 @@ function ifNoneMatchMatches(header: string | undefined, etag: string): boolean {
     })
 }
 
-export function createGitRoutes(getSyncEngine: () => SyncEngine | null): Hono<WebAppEnv> {
+export function createGitRoutes(
+    getSyncEngine: () => SyncEngine | null,
+    options: { generatedMediaHome?: string } = {}
+): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
+    const generatedMediaHome = options.generatedMediaHome ?? getHapiHomeDir()
 
     app.get('/sessions/:id/git-status', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
@@ -185,14 +191,30 @@ export function createGitRoutes(getSyncEngine: () => SyncEngine | null): Hono<We
             })
         }
 
-        const result = await runRpc(() => engine.readGeneratedImage(sessionResult.sessionId, parsed.data.imageId))
-        if (!result.success || !result.content) {
-            return c.json({ success: false, error: result.error ?? 'Generated image not found' }, 404)
+        // The hub's own copy first: it outlives the session process, which
+        // keeps generated media in memory only.
+        const namespace = c.get('namespace')
+        let media = await readGeneratedMedia(generatedMediaHome, namespace, parsed.data.imageId)
+        let typeDeclared = true
+        if (!media) {
+            const result = await runRpc(() => engine.readGeneratedImage(sessionResult.sessionId, parsed.data.imageId))
+            if (!result.success || !result.content) {
+                return c.json({ success: false, error: result.error ?? 'Generated image not found' }, 404)
+            }
+            typeDeclared = Boolean(result.mimeType)
+            media = {
+                bytes: Buffer.from(result.content, 'base64'),
+                mimeType: result.mimeType ?? 'application/octet-stream',
+                fileName: result.fileName ?? 'generated-media'
+            }
+            await saveGeneratedMedia(generatedMediaHome, namespace, parsed.data.imageId, media).catch((error) => {
+                console.error('[generated-media] failed to keep a copy:', error)
+            })
         }
 
-        const bytes = Uint8Array.from(Buffer.from(result.content, 'base64'))
-        const mimeType = result.mimeType ?? 'application/octet-stream'
-        const disposition = !result.mimeType || mimeType.startsWith('image/') || mimeType.startsWith('video/') || mimeType.startsWith('audio/')
+        const bytes = Uint8Array.from(media.bytes)
+        const mimeType = media.mimeType
+        const disposition = !typeDeclared || mimeType.startsWith('image/') || mimeType.startsWith('video/') || mimeType.startsWith('audio/')
             ? 'inline'
             : 'attachment'
         // Generated images are content-addressed by an immutable random id, so the bytes for a
@@ -200,7 +222,7 @@ export function createGitRoutes(getSyncEngine: () => SyncEngine | null): Hono<We
         // re-run the full HTTP -> socket.io RPC -> base64 round-trip every time (issue #927).
         return c.body(bytes, 200, {
             'Content-Type': mimeType,
-            'Content-Disposition': `${disposition}; filename="${encodeURIComponent(result.fileName ?? 'generated-media')}"`,
+            'Content-Disposition': `${disposition}; filename="${encodeURIComponent(media.fileName)}"`,
             'X-Content-Type-Options': 'nosniff',
             'Cache-Control': GENERATED_IMAGE_CACHE_CONTROL,
             ETag: etag

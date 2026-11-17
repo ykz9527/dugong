@@ -13,6 +13,9 @@ import { shouldRecordSessionActivity } from '../../../sync/sessionActivity'
 import type { CliSocketWithData } from '../../socketTypes'
 import type { SessionEndReason } from '@hapi/protocol'
 import type { AccessErrorReason, AccessResult } from './types'
+import { isStorableGeneratedMedia, saveGeneratedMedia } from '../../../generatedMedia/store'
+import { getHapiHomeDir } from '../../../scratchlistAttachments/storage'
+import { MAX_GENERATED_IMAGE_BYTES } from '../../socketLimits'
 
 type SessionAlivePayload = {
     sid: string
@@ -49,6 +52,14 @@ type EmitAccessError = (scope: 'session' | 'machine', id: string, reason: Access
 
 type UpdateMetadataHandler = ClientToServerEvents['update-metadata']
 type UpdateStateHandler = ClientToServerEvents['update-state']
+
+const generatedMediaSchema = z.object({
+    sid: z.string(),
+    id: z.string(),
+    mimeType: z.string().max(128),
+    fileName: z.string().max(255),
+    content: z.string().max(Math.ceil(MAX_GENERATED_IMAGE_BYTES * 4 / 3) + 4)
+})
 
 const messageSchema = z.object({
     sid: z.string(),
@@ -435,6 +446,27 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         // heterogeneous, replayed, or unknown. `steered` is a live-only signal
         // (never persisted) that marks mid-turn delivery for the web badge.
         onWebappEvent?.({ type: 'messages-consumed', sessionId: data.sid, localIds, invokedAt, ...(data.steered === true ? { steered: true } : {}) })
+    })
+
+    socket.on('generated-media', (data: unknown) => {
+        const parsed = generatedMediaSchema.safeParse(data)
+        if (!parsed.success) {
+            return
+        }
+        const { sid, id, mimeType, fileName, content } = parsed.data
+        const bytes = Buffer.from(content, 'base64')
+        if (!isStorableGeneratedMedia(id, mimeType, bytes.byteLength)) {
+            return
+        }
+        const sessionAccess = resolveSessionAccess(sid)
+        if (!sessionAccess.ok) {
+            emitAccessError('session', sid, sessionAccess.reason)
+            return
+        }
+        void saveGeneratedMedia(getHapiHomeDir(), sessionAccess.value.namespace, id, { bytes, mimeType, fileName })
+            .catch((error) => {
+                console.error('[generated-media] failed to keep a copy:', error)
+            })
     })
 
     socket.on('messages-indeterminate', (data: { sid: string; localIds: string[] }) => {

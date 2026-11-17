@@ -2,9 +2,22 @@ import { describe, expect, it } from 'vitest'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { clearGeneratedImages, decodeGeneratedImageBase64, detectAudioMimeType, detectDisplayMediaMimeType, detectImageMimeType, detectVideoMimeType, getGeneratedImage, MAX_GENERATED_IMAGE_BASE64_CHARS, MAX_GENERATED_IMAGE_BYTES, readBoundedRegularFile, registerGeneratedImage, registerGeneratedImageFromAcpBlock, registerGeneratedImageFromPath, safeAcpFileName } from './generatedImages'
+import { clearGeneratedImages, decodeGeneratedImageBase64, detectAudioMimeType, detectDisplayMediaMimeType, detectImageMimeType, detectVideoMimeType, getGeneratedImage, MAX_GENERATED_IMAGE_BASE64_CHARS, onGeneratedImageRegistered, MAX_GENERATED_IMAGE_BYTES, readBoundedRegularFile, registerGeneratedImage, registerGeneratedImageFromAcpBlock, registerGeneratedImageFromPath, safeAcpFileName } from './generatedImages'
 
 describe('generatedImages', () => {
+    it('tells subscribers about each newly registered image so the hub can keep a copy', () => {
+        clearGeneratedImages()
+        const seen: string[] = []
+        const stop = onGeneratedImageRegistered((image) => seen.push(`${image.id}:${image.mimeType}`))
+        const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+        registerGeneratedImage({ id: 'img-a', path: '/tmp/a.png', mimeType: 'image/png', bytes: png })
+        stop()
+        registerGeneratedImage({ id: 'img-b', path: '/tmp/b.png', mimeType: 'image/png', bytes: png })
+
+        expect(seen).toEqual(['img-a:image/png'])
+        clearGeneratedImages()
+    })
+
     it('detects supported image MIME types from file bytes', () => {
         expect(detectImageMimeType(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe('image/png')
         expect(detectImageMimeType(Buffer.from([0xff, 0xd8, 0xff, 0xdb]))).toBe('image/jpeg')

@@ -38,6 +38,7 @@ import type {
 import { AgentStateSchema, CliMessagesResponseSchema, MetadataSchema, UserMessageSchema } from './types'
 import { RpcHandlerManager } from './rpc/RpcHandlerManager'
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers'
+import { onGeneratedImageRegistered } from '../modules/common/generatedImages'
 import { cleanupUploadDir } from '../modules/common/handlers/uploads'
 import { TerminalManager } from '@/terminal/TerminalManager'
 import { applyVersionedAck } from './versionedUpdate'
@@ -230,6 +231,7 @@ export class ApiSessionClient extends EventEmitter {
     private metadataChangedDuringAttempt = false
     private agentStateChangedDuringAttempt = false
     private readonly pendingOutboundEvents: PendingOutboundEvent[] = []
+    private readonly stopGeneratedMediaPush: () => void
     private didWarnPendingQueueFull = false
 
     constructor(token: string, session: Session, options: ApiSessionClientOptions = {}) {
@@ -267,6 +269,20 @@ export class ApiSessionClient extends EventEmitter {
             transports: ['websocket'],
             autoConnect: false,
             ...buildSocketIoExtraHeaderOptions()
+        })
+
+        this.stopGeneratedMediaPush = onGeneratedImageRegistered((image) => {
+            if (!this.socket.connected) {
+                // The hub still fetches and keeps it on first view.
+                return
+            }
+            this.socket.emit('generated-media', {
+                sid: this.sessionId,
+                id: image.id,
+                mimeType: image.mimeType,
+                fileName: image.fileName,
+                content: image.content.toString('base64')
+            })
         })
 
         this.terminalManager = new TerminalManager({
@@ -1508,6 +1524,7 @@ export class ApiSessionClient extends EventEmitter {
         this.pendingOutboundEvents.length = 0
         this.rpcHandlerManager.onSocketDisconnect()
         this.terminalManager.closeAll()
+        this.stopGeneratedMediaPush()
         this.socket.disconnect()
     }
 }

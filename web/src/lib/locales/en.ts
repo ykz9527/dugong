@@ -522,6 +522,7 @@ export default {
   'media.displayed.file': 'Displayed file',
   'media.displayed.header': '{label}: {fileName}',
   'media.displayed.unavailable': '{label} is unavailable. {error}',
+  'media.displayed.gone': '{label} is no longer available: the session that made it has ended and no copy was kept.',
 
   // Tool card
   'tool.askQuestion': 'Other',

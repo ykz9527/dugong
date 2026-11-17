@@ -1,3 +1,4 @@
+import { ApiError } from '@/api/client'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { ToolCallMessagePartProps } from '@assistant-ui/react'
 import type { ChatBlock } from '@/chat/types'
@@ -67,6 +68,9 @@ export function computeTinyImageScale(width: number, height: number): number {
 }
 
 /** Exported for generated-media fetch and renderer tests. */
+// The hub and the session process both lost it; retrying will not help.
+const GONE = 'gone'
+
 export function GeneratedImageCard(props: { block: GeneratedImageBlock }) {
     const ctx = useHappyChatContext()
     const { t } = useTranslation()
@@ -130,7 +134,9 @@ export function GeneratedImageCard(props: { block: GeneratedImageBlock }) {
             })
             .catch((err: unknown) => {
                 if (disposed) return
-                setError(err instanceof Error ? err.message : 'Failed to load inline media')
+                setError(err instanceof ApiError && err.status === 404
+                    ? GONE
+                    : err instanceof Error ? err.message : 'Failed to load inline media')
             })
 
         return () => {
@@ -183,7 +189,9 @@ export function GeneratedImageCard(props: { block: GeneratedImageBlock }) {
                 )
             ) : error ? (
                 <div className="text-sm text-[var(--app-hint)]">
-                    {t('media.displayed.unavailable', { label: mediaLabel, error })}
+                    {error === GONE
+                        ? t('media.displayed.gone', { label: mediaLabel })
+                        : t('media.displayed.unavailable', { label: mediaLabel, error })}
                 </div>
             ) : !isImage && !loadMedia ? (
                 <button
