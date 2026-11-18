@@ -11,6 +11,7 @@ import { registerCliHandlers } from './handlers/cli'
 import { registerTerminalHandlers } from './handlers/terminal'
 import { RpcRegistry } from './rpcRegistry'
 import { SOCKET_MAX_HTTP_BUFFER_SIZE } from './socketLimits'
+import { isAllowedSocketOrigin } from './socketOrigin'
 import type { SyncEvent } from '../sync/syncEngine'
 import { TerminalRegistry } from './terminalRegistry'
 import { clearUserTerminalBuffer } from './userTerminalBuffer'
@@ -75,8 +76,7 @@ export function createSocketServer(deps: SocketServerDeps): {
         cors: corsOptions,
         maxHttpBufferSize: SOCKET_MAX_HTTP_BUFFER_SIZE,
         allowRequest: async (req) => {
-            const origin = req.headers.get('origin')
-            if (!origin || allowAllOrigins || corsOrigins.includes(origin)) {
+            if (isAllowedSocketOrigin(req.headers.get('origin'), req.headers, corsOrigins)) {
                 return
             }
             throw 'Origin not allowed'
