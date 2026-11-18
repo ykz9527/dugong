@@ -223,6 +223,32 @@ describe('terminal socket handlers', () => {
         clearUserTerminalBuffer('session-2', 'terminal-1')
     })
 
+    it('tells a still-connected socket when another socket takes its terminal over', () => {
+        const { io, terminalSocket, cliNamespace, terminalRegistry } = createHarness()
+        io.of('/terminal').sockets.set(terminalSocket.id, terminalSocket)
+        connectCliSocket(cliNamespace, new FakeSocket('cli-socket-1'), 'session-1')
+        const create = { sessionId: 'session-1', terminalId: 'terminal-1', cols: 80, rows: 24 }
+        terminalSocket.trigger('terminal:create', create)
+
+        const duplicate = new FakeSocket('duplicate-tab-socket')
+        duplicate.data.namespace = 'default'
+        registerTerminalHandlers(duplicate as unknown as SocketWithData, {
+            io: io as unknown as SocketServer,
+            getSession: () => ({ active: true, namespace: 'default' }),
+            terminalRegistry,
+            maxTerminalsPerSocket: 4,
+            maxTerminalsPerSession: 4
+        })
+        duplicate.trigger('terminal:create', create)
+
+        expect(lastEmit(terminalSocket, 'terminal:error')?.data).toEqual({
+            terminalId: 'terminal-1',
+            message: 'Terminal opened in another window.'
+        })
+        expect(lastEmit(duplicate, 'terminal:error')).toBeUndefined()
+        expect(terminalRegistry.get('terminal-1')?.socketId).toBe('duplicate-tab-socket')
+    })
+
     it('does not replay buffered output when the same socket repeats terminal:create', () => {
         clearUserTerminalBuffer('session-1', 'terminal-1')
         appendUserTerminalOutput('session-1', 'terminal-1', 'scrollback')

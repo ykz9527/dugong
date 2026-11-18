@@ -448,6 +448,9 @@ export default {
   'terminal.paste.fallbackTitle': '粘贴输入',
   'terminal.paste.fallbackDescription': '无法读取剪贴板，在下方粘贴。',
   'terminal.paste.placeholder': '在此粘贴终端输入…',
+  'terminal.paste.multilineUnsafe': '这个 shell 粘贴多行命令时会逐行直接执行，所以没有填入。请从工具调用里复制。',
+  'terminal.panel.close': '关闭终端（shell 继续运行）',
+  'terminal.panel.resize': '终端高度',
 
   // Code block
   'code.copy': '复制',
@@ -546,6 +549,7 @@ export default {
   'tool.exitPlan': '退出计划模式',
   'tool.patch': '补丁',
   'tool.input': '输入',
+  'tool.runInTerminal': '在终端中运行',
   'tool.trace': '追踪',
   'tool.trace.callsSuffix': '次调用',
   'tool.result': '结果',

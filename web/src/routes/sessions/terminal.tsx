@@ -9,7 +9,9 @@ import { useTerminalSocket } from '@/hooks/useTerminalSocket'
 import { useQuickKeyInput, QuickKeyRows, type QuickInput } from '@/components/QuickKeys/QuickKeys'
 import { useLongPress } from '@/hooks/useLongPress'
 import { useTranslation } from '@/lib/use-translation'
-import { randomId } from '@/lib/randomId'
+import { getShellTerminalId, typeCommandAtPrompt } from '@/lib/shellTerminal'
+import { useCompactTerminalControls } from '@/hooks/useCompactTerminalControls'
+import { usePendingShellCommand } from '@/hooks/usePendingShellCommand'
 import { TerminalView } from '@/components/Terminal/TerminalView'
 import { LoadingState } from '@/components/LoadingState'
 import { Button } from '@/components/ui/button'
@@ -100,24 +102,6 @@ function ConnectionIndicator(props: { status: 'idle' | 'connecting' | 'connected
 
 type TerminalInputMode = 'command' | 'direct'
 type DirectKeyPage = 'control' | 'navigation' | 'shell' | 'symbols'
-
-const COMPACT_TERMINAL_QUERY = '(max-width: 640px), (pointer: coarse)'
-
-function useCompactTerminalControls(): boolean {
-    const [compact, setCompact] = useState(
-        () => typeof window !== 'undefined' && window.matchMedia(COMPACT_TERMINAL_QUERY).matches
-    )
-
-    useEffect(() => {
-        const media = window.matchMedia(COMPACT_TERMINAL_QUERY)
-        const update = () => setCompact(media.matches)
-        update()
-        media.addEventListener('change', update)
-        return () => media.removeEventListener('change', update)
-    }, [])
-
-    return compact
-}
 
 export function buildTerminalCommandSequence(command: string): string {
     const normalized = command.replace(/\r\n|\n/g, '\r')
@@ -263,20 +247,9 @@ export default function TerminalPage() {
     const goBack = useAppGoBack()
     const { session } = useSession(api, sessionId)
     const terminalSupported = isRemoteTerminalSupported(session?.metadata)
-    // A per-viewer-unique terminal id. Two browsers/tabs/devices viewing the
-    // same session must each drive their own shell: the hub registry evicts a
-    // reused id arriving from a different socket as a stale reconnect
-    // (terminalRegistry.ts), which would otherwise let a second viewer hijack
-    // the first viewer's PTY. The id is intentionally NOT derived from sessionId
-    // alone — scrollback survives navigation via the sessionId-keyed buffer
-    // (userTerminalBuffer.ts), not via a stable id. Held in a ref so it stays
-    // constant across re-renders and transient socket reconnects, and
-    // regenerates only when the route switches to a different session.
-    const terminalIdRef = useRef<{ sessionId: string; id: string } | null>(null)
-    if (terminalIdRef.current?.sessionId !== sessionId) {
-        terminalIdRef.current = { sessionId, id: `term-${sessionId}-${randomId()}` }
-    }
-    const terminalId = terminalIdRef.current.id
+    // This tab's shell for the session (see lib/shellTerminal.ts): leaving the
+    // page or reloading reattaches to it, and the hub replays its scrollback.
+    const terminalId = getShellTerminalId(sessionId)
     const terminalRef = useRef<Terminal | null>(null)
     const commandInputRef = useRef<HTMLTextAreaElement | null>(null)
     const inputDisposableRef = useRef<{ dispose: () => void } | null>(null)
@@ -292,6 +265,7 @@ export default function TerminalPage() {
     const [commandDraft, setCommandDraft] = useState('')
     const [pasteDialogOpen, setPasteDialogOpen] = useState(false)
     const [manualPasteText, setManualPasteText] = useState('')
+    const [notice, setNotice] = useState<string | null>(null)
 
     const {
         state: terminalState,
@@ -308,11 +282,37 @@ export default function TerminalPage() {
         baseUrl,
     })
 
+    // "Run in terminal": on a phone the command waits in the command box for
+    // Send; with a keyboard it is typed at the prompt for Enter.
+    const applyQueuedCommand = useCallback((command: string) => {
+        if (compactControls) {
+            setInputMode('command')
+            setCommandDraft(command)
+            requestAnimationFrame(() => {
+                const input = commandInputRef.current
+                input?.focus()
+                input?.setSelectionRange(command.length, command.length)
+            })
+            return
+        }
+        const terminal = terminalRef.current
+        if (terminal) {
+            setNotice(typeCommandAtPrompt(terminal, command) ? null : t('terminal.paste.multilineUnsafe'))
+        }
+    }, [compactControls, t])
+
+    const pendingCommand = usePendingShellCommand({
+        sessionId,
+        ready: terminalState.status === 'connected',
+        apply: applyQueuedCommand,
+    })
+
     useEffect(() => {
         onOutput((data) => {
             terminalRef.current?.write(data)
+            pendingCommand.noteOutput()
         })
-    }, [onOutput])
+    }, [onOutput, pendingCommand.noteOutput])
 
     useEffect(() => {
         onExit((code, signal) => {
@@ -338,6 +338,7 @@ export default function TerminalPage() {
             terminalRef.current = terminal
             inputDisposableRef.current?.dispose()
             inputDisposableRef.current = terminal.onData((data) => {
+                setNotice(null)
                 dispatch(data)
             })
             if (!compactControls || inputMode === 'direct') {
@@ -605,6 +606,12 @@ export default function TerminalPage() {
                             </button>
                         ) : null}
                     </div>
+                </div>
+            ) : null}
+
+            {notice ? (
+                <div className="mx-auto w-full max-w-content px-3 pt-3 text-[13px] text-[var(--app-accent)]">
+                    {notice}
                 </div>
             ) : null}
 

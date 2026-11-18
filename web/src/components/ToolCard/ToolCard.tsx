@@ -26,9 +26,10 @@ import { cn } from '@/lib/utils'
 import { useTranslation } from '@/lib/use-translation'
 import { TraceSection } from '@/components/ToolCard/trace'
 import { isSubagentToolName } from '@/chat/subagentTool'
+import { RunInTerminalButton } from '@/components/ToolCard/RunInTerminalButton'
+import { TERMINAL_RELATED_TOOL_NAMES } from '@/components/ToolCard/shellCommand'
 
 const ELAPSED_INTERVAL_MS = 1000
-const TERMINAL_RELATED_TOOL_NAMES = new Set(['Bash', 'CodexBash', 'exec_command', 'shell', 'shell_command', 'run_shell_command'])
 
 export function shouldUseCompactTerminalToolCard(toolName: string, terminalToolDisplayMode: TerminalToolDisplayMode): boolean {
     return TERMINAL_RELATED_TOOL_NAMES.has(toolName) && terminalToolDisplayMode === 'compact'
@@ -387,6 +388,8 @@ export function ToolDetailDialogContent(props: {
     metadata: SessionMetadataSummary | null
     /** `inline` renders the same detail under an opened ledger row. */
     variant?: 'dialog' | 'inline'
+    /** Close the surrounding dialog once the command went to the terminal. */
+    onRunInTerminal?: () => void
 }) {
     const { t } = useTranslation()
     const toolName = props.block.tool.name
@@ -414,6 +417,7 @@ export function ToolDetailDialogContent(props: {
                 ) : (
                     renderToolInput(props.block, 'dialog')
                 )}
+                <RunInTerminalButton block={props.block} onDone={props.onRunInTerminal} className="mt-2" />
             </div>
             <TraceSection block={props.block} metadata={props.metadata} />
             {!isQuestionToolWithAnswers ? (
@@ -570,7 +574,10 @@ function ToolCardInner(props: ToolCardProps) {
                 <div className="pb-4 pl-7 pr-1 pt-1">
                     {showInline ? (
                         // Inline previews below already show input and result.
-                        <ToolTimingSummary {...timing} />
+                        <div className="flex flex-col gap-2">
+                            <ToolTimingSummary {...timing} />
+                            <RunInTerminalButton block={props.block} />
+                        </div>
                     ) : (
                         <ToolDetailDialogContent block={props.block} metadata={props.metadata} variant="inline" />
                     )}
@@ -593,7 +600,11 @@ function ToolCardInner(props: ToolCardProps) {
                     <DialogHeader className="text-left">
                         <DialogTitle>{toolTitle}</DialogTitle>
                     </DialogHeader>
-                    <ToolDetailDialogContent block={props.block} metadata={props.metadata} />
+                    <ToolDetailDialogContent
+                        block={props.block}
+                        metadata={props.metadata}
+                        onRunInTerminal={() => setDetailsOpen(false)}
+                    />
                 </DialogContent>
             </Dialog>
 

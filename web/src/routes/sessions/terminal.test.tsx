@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { I18nProvider } from '@/lib/i18n-context'
 import TerminalPage, { buildTerminalCommandSequence } from './terminal'
+import { queueShellCommand } from '@/lib/shellTerminal'
 
 const writeMock = vi.fn()
 const goBackMock = vi.fn()
@@ -133,19 +134,47 @@ describe('TerminalPage terminal id', () => {
     beforeEach(() => {
         vi.clearAllMocks()
         capturedTerminalIds.length = 0
+        window.sessionStorage.clear()
     })
 
-    it('generates a unique terminal id per mount so concurrent viewers do not collide', () => {
-        // Two viewers (tabs/devices) of the SAME session must not share one
-        // terminal id: the hub registry would treat the second viewer's reused
-        // id as a stale reconnect and evict the first viewer's PTY ownership.
-        renderWithProviders()
+    it('reattaches to the same shell when this tab opens the page again', () => {
+        renderWithProviders().unmount()
         renderWithProviders()
 
         const distinct = new Set(capturedTerminalIds)
-        expect(distinct.size).toBe(2)
-        // Each id still carries the session for debuggability/scoping.
-        expect([...distinct].every((id) => id.startsWith('term-session-1-'))).toBe(true)
+        expect(distinct.size).toBe(1)
+        expect([...distinct][0]).toMatch(/^term-session-1-/)
+    })
+
+    it('gives a tab with its own storage its own shell', () => {
+        // Another tab or device must not reuse this tab's id: the hub would
+        // hand that viewer this tab's PTY.
+        renderWithProviders().unmount()
+        window.sessionStorage.clear()
+        renderWithProviders()
+
+        expect(new Set(capturedTerminalIds).size).toBe(2)
+    })
+})
+
+describe('TerminalPage run in terminal', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+        setCompactTerminalControls(true)
+        vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+            callback(0)
+            return 1
+        })
+    })
+
+    it('puts a queued command in the command box without running it', async () => {
+        queueShellCommand('session-1', 'sudo apt install ripgrep\n')
+        renderWithProviders()
+
+        await waitFor(() => {
+            expect(screen.getByRole('textbox', { name: 'Command input' })).toHaveValue('sudo apt install ripgrep')
+        })
+        expect(writeMock).not.toHaveBeenCalled()
     })
 })
 

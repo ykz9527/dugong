@@ -408,6 +408,21 @@ html:has(.chat-scroll-y) #root {
     opacity: 0.6;
 }
 
+/* Top edge of the docked terminal: the same hairline, dragged vertically. */
+.shell-panel-resize-handle {
+    height: 5px;
+    cursor: row-resize;
+    touch-action: none;
+    background: linear-gradient(var(--app-rule), var(--app-rule)) center / 100% 1px no-repeat;
+}
+
+.shell-panel-resize-handle:hover,
+.shell-panel-resize-handle:focus-visible,
+.shell-panel-resize-handle[data-dragging] {
+    outline: none;
+    background-image: linear-gradient(var(--app-accent), var(--app-accent));
+}
+
 /*
  * Keep message layout fully realized while scrolling. `content-visibility: auto`
  * made Chromium replace rough intrinsic heights as older messages entered view,

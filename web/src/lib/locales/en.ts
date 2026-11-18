@@ -444,6 +444,9 @@ export default {
   'terminal.paste.fallbackTitle': 'Paste input',
   'terminal.paste.fallbackDescription': 'Clipboard unavailable. Paste below.',
   'terminal.paste.placeholder': 'Paste terminal input here…',
+  'terminal.paste.multilineUnsafe': 'This shell would run a multi-line command line by line on paste, so it was not typed in. Copy it from the tool call.',
+  'terminal.panel.close': 'Close terminal (the shell keeps running)',
+  'terminal.panel.resize': 'Terminal height',
 
   // Code block
   'code.copy': 'Copy',
@@ -542,6 +545,7 @@ export default {
   'tool.exitPlan': 'Exit Plan Mode',
   'tool.patch': 'Patch',
   'tool.input': 'Input',
+  'tool.runInTerminal': 'Run in terminal',
   'tool.trace': 'Trace',
   'tool.trace.callsSuffix': 'calls',
   'tool.result': 'Result',

@@ -570,6 +570,7 @@ export function HappyThread(props: {
     onOutlineItemClick?: (item: ConversationOutlineItem) => void
     /** Replace the window with one turn; resolves false if it did not load. */
     onOpenTurn?: (target: MessagePosition, end: MessagePosition | null) => Promise<boolean>
+    onRunInTerminal?: (command: string) => void
 }) {
     const { t, locale } = useTranslation()
     const { preferences: headerMetadata } = useSessionHeaderMetadata()
@@ -1766,7 +1767,8 @@ export function HappyThread(props: {
             isSyncingTail: props.isSyncingTail,
             isLoadingMoreMessages: props.isLoadingMoreMessages,
             onNestedScrollFollowChange: handleNestedScrollFollowChange,
-            loadOlderMessagesPreservingScroll: loadOlderFromConsumer
+            loadOlderMessagesPreservingScroll: loadOlderFromConsumer,
+            onRunInTerminal: props.onRunInTerminal
         }}>
             <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col relative">
                 {!props.isSyncingTail && (

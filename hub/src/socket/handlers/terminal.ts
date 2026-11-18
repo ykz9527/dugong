@@ -130,6 +130,16 @@ export function registerTerminalHandlers(socket: SocketWithData, deps: TerminalH
             return
         }
 
+        // A web tab keeps one shell id per session, so a second live socket
+        // with the same id (a duplicated tab) takes the shell over. Tell the
+        // one it took over from instead of letting its terminal go silent.
+        if (isReconnect && existingEntry && existingEntry.socketId !== socket.id) {
+            io.of('/terminal').sockets.get(existingEntry.socketId)?.emit('terminal:error', {
+                terminalId,
+                message: 'Terminal opened in another window.'
+            })
+        }
+
         socket.join(`session:${sessionId}`)
 
         cliSocket.emit('terminal:open', {

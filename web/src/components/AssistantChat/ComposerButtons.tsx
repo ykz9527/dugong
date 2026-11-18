@@ -625,6 +625,7 @@ export function ComposerButtons(props: {
     showTerminalButton: boolean
     terminalDisabled: boolean
     terminalLabel: string
+    terminalActive?: boolean
     onTerminal: () => void
     showAbortButton: boolean
     abortDisabled: boolean
@@ -813,7 +814,12 @@ export function ComposerButtons(props: {
                         type="button"
                         aria-label={props.terminalLabel}
                         title={props.terminalLabel}
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--app-fg)]/60 transition-colors hover:bg-[var(--app-subtle-bg)] hover:text-[var(--app-fg)] disabled:cursor-not-allowed disabled:opacity-50"
+                        aria-pressed={props.terminalActive}
+                        className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                            props.terminalActive
+                                ? 'bg-[var(--app-secondary-bg)] text-[var(--app-link)]'
+                                : 'text-[var(--app-fg)]/60 hover:bg-[var(--app-subtle-bg)] hover:text-[var(--app-fg)]'
+                        }`}
                         onClick={props.onTerminal}
                         disabled={props.terminalDisabled}
                     >

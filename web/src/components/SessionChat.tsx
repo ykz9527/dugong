@@ -113,6 +113,9 @@ import { usePiModels } from '@/hooks/queries/usePiModels'
 import { useOpencodeReasoningEffortOptions } from '@/hooks/queries/useOpencodeReasoningEffortOptions'
 import { useVoiceOptional } from '@/lib/voice-context'
 import { AgentTerminalView } from '@/components/AgentTerminal/AgentTerminalView'
+import { ShellTerminalPanel } from '@/components/Terminal/ShellTerminalPanel'
+import { useCompactTerminalControls } from '@/hooks/useCompactTerminalControls'
+import { queueShellCommand } from '@/lib/shellTerminal'
 import { VoiceBackendSession, registerSessionStore, registerVoiceHooksStore, voiceHooks } from '@/realtime'
 import { isRemoteTerminalSupported } from '@/utils/terminalSupport'
 
@@ -629,6 +632,11 @@ function SessionChatInner(props: SessionChatProps) {
     })
     const [outlineOpen, setOutlineOpen] = useState(props.initialOutlineOpen ?? false)
     const [terminalVisible, setTerminalVisible] = useState(false)
+    // The user's shell: docked under the chat on desktop, its own page on a phone.
+    const compactTerminal = useCompactTerminalControls()
+    const [shellPanelOpen, setShellPanelOpen] = useState(false)
+    const shellAvailable = props.session.active && terminalSupported
+    const shellPanelVisible = shellAvailable && shellPanelOpen && !compactTerminal
     useEffect(() => {
         if (!props.initialOutlineOpen) {
             return
@@ -1586,13 +1594,32 @@ function SessionChatInner(props: SessionChatProps) {
         setOutlineOpen((open) => !open)
     }, [])
 
-    const handleViewTerminal = useCallback(() => {
+    const openTerminalPage = useCallback(() => {
         navigate({
             to: '/sessions/$sessionId/terminal',
             params: { sessionId: props.session.id },
             ...PRESERVE_SESSION_SIDEBAR_SCROLL,
         })
     }, [navigate, props.session.id])
+
+    const handleViewTerminal = useCallback(() => {
+        if (compactTerminal) {
+            openTerminalPage()
+            return
+        }
+        setShellPanelOpen((open) => !open)
+    }, [compactTerminal, openTerminalPage])
+
+    const handleRunInTerminal = useCallback((command: string) => {
+        queueShellCommand(props.session.id, command)
+        if (compactTerminal) {
+            openTerminalPage()
+            return
+        }
+        setShellPanelOpen(true)
+    }, [compactTerminal, openTerminalPage, props.session.id])
+
+    const handleCloseShellPanel = useCallback(() => setShellPanelOpen(false), [])
 
     // Scheduled message state — lifted here so useHappyRuntime can read the ref.
     //
@@ -1904,8 +1931,17 @@ function SessionChatInner(props: SessionChatProps) {
                         outlineItems={outlineItems}
                         onOutlineOpenChange={setOutlineOpen}
                         onOpenTurn={handleOpenTurn}
+                        onRunInTerminal={shellAvailable ? handleRunInTerminal : undefined}
                     />
                     </div>
+
+                    {shellPanelVisible ? (
+                        <ShellTerminalPanel
+                            sessionId={props.session.id}
+                            cwd={props.session.metadata?.path ?? null}
+                            onClose={handleCloseShellPanel}
+                        />
+                    ) : null}
 
                     <div className={outlineOpen ? 'max-sm:hidden' : undefined}>
                         {codexCollaborationModeSupported && codexModelsState.error ? (
@@ -2140,7 +2176,8 @@ function SessionChatInner(props: SessionChatProps) {
                                 : undefined
                         }
                         onSwitchToRemote={handleSwitchToRemote}
-                        onTerminal={props.session.active && terminalSupported ? handleViewTerminal : undefined}
+                        onTerminal={shellAvailable ? handleViewTerminal : undefined}
+                        terminalActive={compactTerminal ? undefined : shellPanelVisible}
                         terminalUnsupported={props.session.active && !terminalSupported}
                         autocompleteSuggestions={props.autocompleteSuggestions}
                         voiceStatus={voice?.status}

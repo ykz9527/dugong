@@ -354,6 +354,8 @@ export function HappyComposer(props: {
     onServiceTierChange?: (serviceTier: string | null) => void
     onSwitchToRemote?: () => void
     onTerminal?: () => void
+    /** The docked terminal is open (the button toggles it). */
+    terminalActive?: boolean
     terminalUnsupported?: boolean
     autocompletePrefixes?: string[]
     autocompleteSuggestions?: (query: string) => Promise<Suggestion[]>
@@ -451,6 +453,7 @@ export function HappyComposer(props: {
         onServiceTierChange,
         onSwitchToRemote,
         onTerminal,
+        terminalActive,
         terminalUnsupported = false,
         autocompletePrefixes = ['@', '/', '$'],
         autocompleteSuggestions = defaultSuggestionHandler,
@@ -2412,6 +2415,7 @@ export function HappyComposer(props: {
                             showTerminalButton={showTerminalButton}
                             terminalDisabled={terminalDisabled}
                             terminalLabel={terminalLabel}
+                            terminalActive={terminalActive}
                             onTerminal={onTerminal ?? (() => {})}
                             showAbortButton={showAbortButton}
                             abortDisabled={abortDisabled}

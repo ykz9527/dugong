@@ -39,6 +39,8 @@ export type HappyChatContextValue = {
     isLoadingMoreMessages: boolean
     onNestedScrollFollowChange?: (followLatest: boolean) => void
     loadOlderMessagesPreservingScroll: () => Promise<OlderHistoryLoadResult>
+    /** Type a command at the session's shell prompt; absent when there is no live shell. */
+    onRunInTerminal?: (command: string) => void
 }
 
 const HappyChatContext = createContext<HappyChatContextValue | null>(null)
