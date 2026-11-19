@@ -134,6 +134,23 @@ describe('assignThreadMessageIds', () => {
         expect(second[0].threadMessageId).toBe('agent-text:a')
         expect(second[1].threadMessageId).toBe('user-text:u')
     })
+
+    it('keeps a wrapper while its presentation data is equal and replaces it when it changes', () => {
+        const block = agentText('a')
+        const cache = new WeakMap<VisibleChatBlock, BlockWithThreadMessageId>()
+        const presentation = (turnCount: number) => ({
+            timestamps: new Map([[block, 5]]),
+            aggregates: new Map([[block.id, { model: 'm', invokedAt: 1, durationMs: undefined, turnCount }]])
+        })
+        const first = assignThreadMessageIdsWithStableWrappers([block], cache, presentation(1))
+        const same = assignThreadMessageIdsWithStableWrappers([block], cache, presentation(1))
+        const changed = assignThreadMessageIdsWithStableWrappers([block], cache, presentation(2))
+
+        expect(same[0]).toBe(first[0])
+        expect(first[0].timestamp).toBe(5)
+        expect(changed[0]).not.toBe(first[0])
+        expect(changed[0].aggregate?.turnCount).toBe(2)
+    })
 })
 
 describe('findLatestCompletedBoundaryId', () => {

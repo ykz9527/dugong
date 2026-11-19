@@ -338,6 +338,21 @@ export function aggregateResponseGroups(
 export type BlockWithThreadMessageId = {
     block: VisibleChatBlock
     threadMessageId: string
+    /** Response-group timestamp; falls back to the block's own when absent. */
+    timestamp?: number
+    /** Summed response-group metadata, on the group's first visible block. */
+    aggregate?: AggregatedAssistantMeta
+}
+
+export type BlockPresentation = {
+    timestamps: ReadonlyMap<VisibleChatBlock, number>
+    aggregates: ReadonlyMap<string, AggregatedAssistantMeta>
+}
+
+function sameAggregate(a: AggregatedAssistantMeta | undefined, b: AggregatedAssistantMeta | undefined): boolean {
+    if (a === b) return true
+    if (!a || !b) return false
+    return JSON.stringify(a) === JSON.stringify(b)
 }
 
 /**
@@ -346,14 +361,18 @@ export type BlockWithThreadMessageId = {
  * appears more than once (should be rare — indicates duplicate hub rows or
  * a reducer bug, but must not crash the thread).
  *
- * Reuses `{ block, threadMessageId }` objects from `wrapperCache` when the
- * reconciled `block` reference and computed id match, so
+ * Reuses `{ block, threadMessageId, … }` objects from `wrapperCache` when the
+ * reconciled `block` reference, the computed id and the presentation data
+ * (group timestamp, group aggregate) all match, so
  * `useExternalMessageConverter`'s WeakMap caches stay warm across streaming
- * appends (see PR review).
+ * appends. The wrapper carries the presentation data so the converter
+ * callback can stay stable: a new callback drops the converter's whole cache
+ * and re-converts (and re-renders) every message in the thread.
  */
 export function assignThreadMessageIdsWithStableWrappers(
     blocks: readonly VisibleChatBlock[],
-    wrapperCache: WeakMap<VisibleChatBlock, BlockWithThreadMessageId>
+    wrapperCache: WeakMap<VisibleChatBlock, BlockWithThreadMessageId>,
+    presentation?: BlockPresentation
 ): BlockWithThreadMessageId[] {
     const seen = new Map<string, number>()
     return blocks.map((block) => {
@@ -361,11 +380,19 @@ export function assignThreadMessageIdsWithStableWrappers(
         const occurrence = seen.get(base) ?? 0
         seen.set(base, occurrence + 1)
         const threadMessageId = occurrence === 0 ? base : `${base}~${occurrence}`
+        const timestamp = presentation?.timestamps.get(block)
+        const aggregate = presentation?.aggregates.get(block.id)
         const cached = wrapperCache.get(block)
-        if (cached?.threadMessageId === threadMessageId) {
+        if (
+            cached?.threadMessageId === threadMessageId
+            && cached.timestamp === timestamp
+            && sameAggregate(cached.aggregate, aggregate)
+        ) {
             return cached
         }
         const next: BlockWithThreadMessageId = { block, threadMessageId }
+        if (timestamp !== undefined) next.timestamp = timestamp
+        if (aggregate !== undefined) next.aggregate = aggregate
         wrapperCache.set(block, next)
         return next
     })
@@ -868,28 +895,24 @@ export function useHappyRuntime(props: {
     const blocksWithThreadIds = useMemo(
         () => assignThreadMessageIdsWithStableWrappers(
             props.blocks,
-            threadIdWrapperCacheRef.current
+            threadIdWrapperCacheRef.current,
+            {
+                timestamps: getResponseGroupTimestamps(props.blocks),
+                aggregates: aggregateResponseGroups(props.blocks)
+            }
         ),
         [props.blocks]
     )
 
-    const aggregates = useMemo(
-        () => aggregateResponseGroups(props.blocks),
-        [props.blocks]
-    )
-    const responseGroupTimestamps = useMemo(
-        () => getResponseGroupTimestamps(props.blocks),
-        [props.blocks]
-    )
-
+    // No dependencies on purpose: everything a message needs rides on its
+    // wrapper, so the converter keeps its per-message cache across appends.
     const convertBlock = useCallback(
-        ({ block, threadMessageId }: BlockWithThreadMessageId): ThreadMessageLike => {
+        ({ block, threadMessageId, timestamp, aggregate }: BlockWithThreadMessageId): ThreadMessageLike => {
             const message = toThreadMessageLike(
                 block,
                 threadMessageId,
-                responseGroupTimestamps.get(block) ?? getBlockPresentationTimestamp(block)
+                timestamp ?? getBlockPresentationTimestamp(block)
             )
-            const aggregate = aggregates.get(block.id)
             if (!aggregate) return message
             const existing = message.metadata?.custom as HappyChatMessageMetadata | undefined
             return {
@@ -908,7 +931,7 @@ export function useHappyRuntime(props: {
                 }
             }
         },
-        [aggregates, responseGroupTimestamps]
+        []
     )
 
     // Use cached message converter for performance optimization
