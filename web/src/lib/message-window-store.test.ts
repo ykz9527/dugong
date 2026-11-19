@@ -1485,8 +1485,8 @@ describe('V2 persistence boundary', () => {
                 ...Array.from({ length: 50 }, (_, index) => makeAgentMessage({ id: `row-${index}`, seq: index + 2, at: index + 2 })),
                 makeUserMessage({ id: 'local-unsent', localId: 'local-unsent', createdAt: 100, invokedAt: null, status: 'queued' })
             ])
-            // Persistence is throttled on a real 200ms timer.
-            await new Promise((resolve) => setTimeout(resolve, 450))
+            // Persistence is throttled; leaving the page flushes it at once.
+            window.dispatchEvent(new Event('pagehide'))
 
             const saved = JSON.parse(sessionStorage.getItem(key) ?? 'null') as { messages: Array<{ id: string }>; newestPositionAt: unknown }
             expect(saved.messages.map((message) => message.id)).toEqual(['local-unsent'])

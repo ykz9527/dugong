@@ -85,7 +85,12 @@ const listeners = new Map<string, Set<() => void>>()
 const tailSyncControllers = new Map<string, TailSyncController>()
 
 const NOTIFY_THROTTLE_MS = 150
-const PERSIST_THROTTLE_MS = 200
+// Persisting stringifies the whole window (tool outputs included, often
+// several MB) and writes it synchronously, so doing it every 200 ms while an
+// agent streams blocked the main thread. The copy only serves a reload, and
+// everything but unsent rows can be fetched again: write rarely, and flush
+// whenever the page may be going away.
+const PERSIST_THROTTLE_MS = 2_000
 const STORAGE_KEY_PREFIX = 'hapi:message-window:v2:'
 const pendingNotifySessionIds = new Set<string>()
 const pendingPersistSessionIds = new Set<string>()
@@ -240,6 +245,22 @@ function flushPersistedStates(): void {
             clearPersistedState(sessionId)
         }
     }
+}
+
+function flushPendingPersistence(): void {
+    if (persistTimerId !== null) {
+        clearTimeout(persistTimerId)
+    }
+    flushPersistedStates()
+}
+
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    window.addEventListener('pagehide', flushPendingPersistence)
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            flushPendingPersistence()
+        }
+    })
 }
 
 function schedulePersist(sessionId: string): void {
