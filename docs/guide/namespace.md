@@ -4,7 +4,7 @@ A few people can share one hub and its machines. dugong has two ways to split it
 
 | | Workspace users | Namespaces |
 |---|---|---|
-| Question | Whose work is this? | Who may see this at all? |
+| Question | Whose work is this? | Which work shows up at all? |
 | Separates | What each person's task list, assistant and notifications show | Everything: sessions, tasks, machines |
 | Shared token | Yes, everyone signs in with the same access token | No, each person has their own token suffix |
 | Set up in | The web app | The token |
@@ -29,7 +29,11 @@ A user with no directories sees an empty list rather than everything. Workspace 
 
 ## Namespaces
 
-A namespace walls off one person's sessions, tasks and machines from everyone else's on the same hub. Use it when people shouldn't see each other's work.
+A namespace keeps one person's sessions, tasks and machines apart from everyone else's on the same hub: nothing in one namespace shows up in another.
+
+::: warning Not access control
+Everyone signs in with the same base token, and the namespace is just the suffix they add to it. Anyone who has the base token can sign in under any namespace by changing the suffix, or by leaving it off. Namespaces keep the work of people who trust each other apart; they do not stop one of them from reading or driving another's sessions and machines. Only give the base token to people you would trust with all of it.
+:::
 
 The hub keeps one base token. Each person appends `:<name>` to it:
 

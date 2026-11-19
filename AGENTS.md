@@ -153,7 +153,7 @@ Before commit/push/PR:
 - **Versioned updates**: CLI sends `update-metadata`/`update-state` with version; hub rejects stale
 - **Session modes**: `local` (terminal) vs `remote` (web-controlled); switchable mid-session
 - **Permission modes**: `default`, `acceptEdits`, `auto`, `bypassPermissions`, `plan`
-- **Namespaces**: Multi-user isolation via `CLI_API_TOKEN:<namespace>` suffix
+- **Namespaces**: Separate views per `CLI_API_TOKEN:<namespace>` suffix. Not access control: any base-token holder can pick any namespace
 
 ## Web design spec
 

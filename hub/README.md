@@ -17,7 +17,7 @@ See `src/configuration.ts` for all options.
 
 ### Required
 
-- `CLI_API_TOKEN` - Base shared secret used by CLI and web login. Clients append `:<namespace>` for isolation. Auto-generated on first run if not set.
+- `CLI_API_TOKEN` - Base shared secret used by CLI and web login. Clients append `:<namespace>` to keep work apart (not access control: any holder of the base token can pick any namespace). Auto-generated on first run if not set.
 
 ### Optional (Telegram)
 

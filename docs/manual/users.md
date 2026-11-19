@@ -4,7 +4,7 @@
 
 [返回功能目录](index.md)
 
-工作区用户用于组织任务范围、个人助手与相关设置；登录 token/namespace 是另一层访问机制。
+工作区用户用于组织任务范围、个人助手与相关设置；namespace 是另一层分隔，但不是访问控制：持有基础 token 的人可以进入任意 namespace。
 
 <a name="switch" id="switch"></a>
 

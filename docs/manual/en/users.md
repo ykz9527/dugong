@@ -2,7 +2,7 @@
 
 [English](./users.md) · [简体中文](../users.md) · [Feature directory](index.md)
 
-Workspace users organize task visibility, personal assistants and related preferences. Login tokens and namespaces provide a separate access layer.
+Workspace users organize task visibility, personal assistants and related preferences. Namespaces are a separate layer that keeps work apart, but they are not access control: anyone with the base token can enter any namespace.
 
 <a name="switch" id="switch"></a>
 
