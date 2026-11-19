@@ -6,6 +6,7 @@ import {
     deriveTaskTitle,
     getDefaultPermissionModeForFlavor,
     getPermissionModeOptionsForFlavor,
+    isPathOwnedBy,
     isPermissionModeAllowedForFlavor,
     type AgentFlavor,
     type PermissionMode
@@ -19,7 +20,7 @@ import { useAppContext } from '@/lib/app-context'
 import { useTranslation } from '@/lib/use-translation'
 import { Button } from '@/components/ui/button'
 import { SelectControl } from '@/components/ui/select-control'
-import { DirectoryPicker, narrowRootsToUser } from './DirectoryPicker'
+import { DirectoryPicker } from './DirectoryPicker'
 import { ADOPTABLE_FLAVORS, AdoptSessionPicker, type AdoptableFlavor, type AdoptableSession } from './AdoptSessionPicker'
 
 /**
@@ -31,14 +32,15 @@ import { ADOPTABLE_FLAVORS, AdoptSessionPicker, type AdoptableFlavor, type Adopt
  */
 export function NewTaskDialog(props: {
     machines: Machine[]
-    /** Directories of the selected workspace user; empty when nobody is selected. */
-    userPaths: readonly string[]
+    /** The workspace user being looked through, if any; their directories are the task's natural home. */
+    activeUser: { name: string; paths: readonly string[] } | null
     isPending: boolean
     error: string | null
     /** Set once the task exists but did not start; the dialog then only closes. */
     startFailure?: string | null
     onSubmit: (input: CreateTaskRequest) => void
-    onAdopt: (input: AdoptTaskInput) => void
+    /** `workdir` is where the adopted conversation ran; empty when the session did not say. */
+    onAdopt: (input: AdoptTaskInput, workdir: string) => void
     onClose: () => void
     /** Prefill from where the composer was opened, e.g. a browsed folder. */
     initialWorkdir?: string
@@ -90,22 +92,27 @@ export function NewTaskDialog(props: {
     const permissionOptions = getPermissionModeOptionsForFlavor(permissionFlavor)
     const permissionModeTone = permissionOptions.find((option) => option.mode === permissionMode)?.tone ?? 'neutral'
     const selectedMachine = props.machines.find((machine) => machine.id === machineId)
+    const allUserPaths = props.activeUser?.paths ?? []
     // A user's directories are stored without a machine, and two machines with
-    // the same home layout both pass the prefix test below — so the list never
-    // changed with the machine, and offered directories that are not there.
-    // Only the machine can say which ones it has. Until it answers, none are
-    // offered: the machine's own roots are wider but never wrong.
+    // the same home layout would both claim them — so only the machine can say
+    // which ones it actually has. Those become the picker's shortcuts.
     const userPathsHere = useQuery({
-        queryKey: ['machine-paths-exist', machineId, props.userPaths],
-        queryFn: async () => await api.checkMachinePathsExists(machineId, [...props.userPaths]),
-        enabled: Boolean(machineId) && props.userPaths.length > 0
+        queryKey: ['machine-paths-exist', machineId, allUserPaths],
+        queryFn: async () => await api.checkMachinePathsExists(machineId, [...allUserPaths]),
+        enabled: Boolean(machineId) && allUserPaths.length > 0
     })
-    const userPaths = props.userPaths.filter((path) => userPathsHere.data?.exists[path])
+    const userPaths = allUserPaths.filter((path) => userPathsHere.data?.exists[path])
     // The runner only serves paths under the roots it was started with, so the
-    // picker browses those rather than the whole filesystem — narrowed further
-    // to the selected user's own directories when there are any.
-    const roots = narrowRootsToUser(selectedMachine?.metadata?.workspaceRoots ?? [], userPaths)
-    const pickerStart = workdir.trim() || roots[0] || selectedMachine?.metadata?.homeDir || '/'
+    // picker browses those rather than the whole filesystem. It opens where
+    // the person's work is, but is not fenced into it: a new project usually
+    // sits *beside* their existing ones.
+    const roots = selectedMachine?.metadata?.workspaceRoots ?? []
+    const pickerStart = workdir.trim() || userPaths[0] || roots[0] || selectedMachine?.metadata?.homeDir || '/'
+    // A task outside the user's directories vanishes from the very list it was
+    // made on, so submitting also claims the directory for them — said up front.
+    const willBindWorkdir = Boolean(
+        props.activeUser && workdir.trim() && !isPathOwnedBy(workdir.trim(), props.activeUser.paths)
+    )
 
     const submit = () => {
         if (!canSubmit) return
@@ -117,7 +124,7 @@ export function NewTaskDialog(props: {
                 machineId,
                 title: title.trim() || undefined,
                 permissionMode
-            })
+            }, workdir.trim())
             return
         }
         props.onSubmit({
@@ -303,6 +310,10 @@ export function NewTaskDialog(props: {
                                         ? t('board.new.noMachines')
                                         : t('board.new.workdirNeedsMachine')}
                                 </span>
+                            ) : willBindWorkdir && props.activeUser ? (
+                                <span className="text-[13px] text-[var(--app-hint)]">
+                                    {t('board.new.workdirWillBind', { name: props.activeUser.name })}
+                                </span>
                             ) : null}
                         </div>
 
@@ -406,6 +417,8 @@ export function NewTaskDialog(props: {
                             api={api}
                             machineId={machineId}
                             roots={roots}
+                            shortcuts={userPaths}
+                            allowCreate
                             initialPath={pickerStart}
                             onPick={(picked) => {
                                 setWorkdir(picked)

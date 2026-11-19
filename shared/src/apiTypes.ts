@@ -733,6 +733,12 @@ export const MachineListDirectoryRequestSchema = z.object({
 
 export type MachineListDirectoryRequest = z.infer<typeof MachineListDirectoryRequestSchema>
 
+export const MachineCreateDirectoryRequestSchema = z.object({
+    path: z.string().min(1)
+})
+
+export type MachineCreateDirectoryRequest = z.infer<typeof MachineCreateDirectoryRequestSchema>
+
 export const MachinePathsExistsRequestSchema = z.object({
     paths: z.array(z.string().min(1)).max(1000)
 })
@@ -817,6 +823,13 @@ export type MachineDirectoryEntry = DirectoryEntry & {
 export type MachineListDirectoryResponse = {
     success: boolean
     entries?: MachineDirectoryEntry[]
+    error?: string
+}
+
+/** `path` is the directory as the machine resolved it, symlinks and all. */
+export type MachineCreateDirectoryResponse = {
+    success: boolean
+    path?: string
     error?: string
 }
 

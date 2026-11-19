@@ -3,7 +3,7 @@
  */
 
 import { io, type Socket } from 'socket.io-client'
-import { readdir, realpath, stat } from 'node:fs/promises'
+import { mkdir, readdir, realpath, stat } from 'node:fs/promises'
 import { realpathSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve as resolvePath } from 'node:path'
 import { logger } from '@/ui/logger'
@@ -19,6 +19,7 @@ import {
     type ListClaudeSessionsRpcResponse,
     type ListCodexSessionsRpcResponse,
     type ListPiSessionsRpcResponse,
+    type MachineCreateDirectoryResponse,
     type MachineDirectoryEntry,
     type MachineListDirectoryResponse,
     type PathExistsResponse,
@@ -74,6 +75,10 @@ interface PathExistsRequest {
 interface ListMachineDirectoryRequest {
     path: string
     includeHidden?: boolean
+}
+
+interface CreateMachineDirectoryRequest {
+    path: string
 }
 
 interface CursorChatStoreStatusRequest {
@@ -175,6 +180,40 @@ export class ApiMachineClient {
                 })
             }
         )
+
+        // A new project starts as an empty folder, and making one used to mean a
+        // terminal. Same fence as browsing: the runner creates only where it would
+        // list. One level only — the picker always asks from inside an existing
+        // folder, and a typo that spawned a whole chain would be hard to undo.
+        this.rpcHandlerManager.registerHandler<CreateMachineDirectoryRequest, MachineCreateDirectoryResponse>(RPC_METHODS.CreateMachineDirectory, async (params) => {
+            if (!this.normalizedWorkspaceRoots?.length) {
+                return { success: false, error: 'Workspace browsing is not enabled for this machine' }
+            }
+
+            const rawPath = typeof params?.path === 'string' ? params.path.trim() : ''
+            if (!rawPath) {
+                return { success: false, error: 'Path is required' }
+            }
+
+            const targetPath = await this.resolveForWorkspaceCheck(rawPath)
+            if (!this.isWithinWorkspaceRoots(targetPath)) {
+                return { success: false, error: 'Path is outside workspace roots' }
+            }
+
+            try {
+                await mkdir(targetPath)
+                return { success: true, path: targetPath }
+            } catch (error) {
+                const code = (error as NodeJS.ErrnoException | null)?.code
+                if (code === 'EEXIST') {
+                    return { success: false, error: 'A file or folder with that name already exists' }
+                }
+                if (code === 'ENOENT') {
+                    return { success: false, error: 'Parent folder does not exist' }
+                }
+                return { success: false, error: error instanceof Error ? error.message : 'Failed to create directory' }
+            }
+        })
 
         this.rpcHandlerManager.registerHandler<ListMachineDirectoryRequest, MachineListDirectoryResponse>(RPC_METHODS.ListMachineDirectory, async (params) => {
             if (!this.normalizedWorkspaceRoots?.length) {

@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Task } from '@hapi/protocol'
 import { ApiError, type ApiClient } from '@/api/client'
+import { setActiveWorkspaceUserId } from '@/lib/activeWorkspaceUser'
 import { AppContextProvider } from '@/lib/app-context'
 import { I18nProvider } from '@/lib/i18n-context'
 import { useNewTaskDialog } from './useNewTaskDialog'
@@ -16,6 +17,7 @@ vi.mock('@tanstack/react-router', () => ({
 afterEach(() => {
     cleanup()
     vi.restoreAllMocks()
+    setActiveWorkspaceUserId(null)
 })
 
 // The whole object is cast to ApiClient at the end anyway, so demanding exact
@@ -46,6 +48,13 @@ function makeApi(tasks: Task[], overrides: Partial<Record<keyof ApiClient, unkno
                     { name: 'README.md', type: 'file' as const }
                 ]
                 : []
+        })),
+        checkMachinePathsExists: vi.fn(async (_machineId: string, paths: string[]) => ({
+            exists: Object.fromEntries(paths.map((path) => [path, true]))
+        })),
+        createMachineDirectory: vi.fn(async (_machineId: string, path: string) => ({ success: true, path })),
+        updateWorkspaceUser: vi.fn(async (id: string, patch: { paths?: string[] }) => ({
+            workspaceUser: { id, namespace: 'default', name: 'kzz', paths: patch.paths ?? [], createdAt: 0, updatedAt: 0 }
         })),
         moveTask: vi.fn(async () => ({ task: tasks[0] })),
         createTask: vi.fn(async () => ({ task: tasks[0] })),
@@ -184,6 +193,52 @@ describe('New task composer', () => {
         expect(await screen.findByText('No sub-folders.')).toBeTruthy()
         expect(screen.getByText('The task can still run here.')).toBeTruthy()
         expect(screen.getByRole('button', { name: '← Up one level' })).toBeTruthy()
+    })
+
+    it('makes a folder where it stands and lands in it', async () => {
+        const api = makeApi([])
+        renderComposer(api)
+
+        fireEvent.click(await screen.findByRole('button', { name: 'New task' }))
+        fireEvent.click(await screen.findByRole('button', { name: 'Browse…' }))
+        await screen.findByRole('button', { name: /^repo/ })
+
+        fireEvent.click(screen.getByRole('button', { name: 'New folder' }))
+        fireEvent.change(screen.getByLabelText('New folder'), { target: { value: 'new-project' } })
+        fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+        await waitFor(() => expect(api.createMachineDirectory).toHaveBeenCalledWith('box-1', '/srv/new-project'))
+        // The new folder is where the work will be, so the picker moves in.
+        await waitFor(() => expect(api.listMachineDirectory).toHaveBeenCalledWith('box-1', '/srv/new-project'))
+        fireEvent.click(screen.getByRole('button', { name: 'Use this directory' }))
+        expect(await screen.findByTitle('/srv/new-project')).toBeTruthy()
+    })
+
+    it('claims a directory outside the user\'s own before making the task', async () => {
+        setActiveWorkspaceUserId('u1')
+        const api = makeApi([], {
+            getWorkspaceUsers: vi.fn(async () => ({
+                workspaceUsers: [{ id: 'u1', namespace: 'default', name: 'kzz', paths: ['/srv/notes'], createdAt: 0, updatedAt: 0 }]
+            }))
+        })
+        renderComposer(api)
+
+        fireEvent.click(screen.getByRole('button', { name: 'New task' }))
+        fireEvent.change(screen.getByPlaceholderText('What should the agent do?'), { target: { value: 'Rewrite the tokenizer' } })
+        await waitFor(() =>
+            expect((screen.getByRole('button', { name: 'Browse…' }) as HTMLButtonElement).disabled).toBe(false))
+        fireEvent.click(screen.getByRole('button', { name: 'Browse…' }))
+        // Opens where kzz's work is, but can leave it: the new project sits beside it.
+        await waitFor(() => expect(api.listMachineDirectory).toHaveBeenCalledWith('box-1', '/srv/notes'))
+        fireEvent.click(await screen.findByRole('button', { name: '← Up one level' }))
+        fireEvent.click(await screen.findByRole('button', { name: /^repo/ }))
+        fireEvent.click(await screen.findByRole('button', { name: 'Use this directory' }))
+        // Said before it happens: the task would otherwise vanish from kzz's list.
+        expect(await screen.findByText("Will be added to kzz's directories")).toBeTruthy()
+        fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+        await waitFor(() => expect(api.updateWorkspaceUser).toHaveBeenCalledWith('u1', { paths: ['/srv/notes', '/srv/repo'] }))
+        await waitFor(() => expect(api.createTask).toHaveBeenCalled())
     })
 
     it('clears a chosen directory when the machine changes', async () => {

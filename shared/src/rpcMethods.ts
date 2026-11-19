@@ -10,6 +10,7 @@ export const RPC_METHODS = {
     StopRunner: 'stop-runner',
     RemoveWorktree: 'remove-worktree',
     ListMachineDirectory: 'list-directory',
+    CreateMachineDirectory: 'create-directory',
     PathExists: 'path-exists',
     CursorChatStoreStatus: 'cursor-chat-store-status',
     GitStatus: 'git-status',

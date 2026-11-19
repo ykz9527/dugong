@@ -729,6 +729,77 @@ describe('ApiMachineClient list-directory handler', () => {
     })
 })
 
+describe('ApiMachineClient create-directory handler', () => {
+    let workspaceRoot: string
+
+    beforeEach(() => {
+        ioMock.mockReset()
+        workspaceRoot = mkdtempSync(join(tmpdir(), 'hapi-machine-mkdir-'))
+        mkdirSync(join(workspaceRoot, 'taken'))
+    })
+
+    afterEach(() => {
+        rmSync(workspaceRoot, { recursive: true, force: true })
+    })
+
+    async function callCreateDirectory(client: ApiMachineClient, machineId: string, path: string): Promise<{ success: boolean; path?: string; error?: string }> {
+        const manager = (client as unknown as { rpcHandlerManager: { handleRequest: (req: { method: string; params: string }) => Promise<string> } }).rpcHandlerManager
+        const raw = await manager.handleRequest({
+            method: `${machineId}:create-directory`,
+            params: JSON.stringify({ path })
+        })
+        return JSON.parse(raw) as { success: boolean; path?: string; error?: string }
+    }
+
+    it('creates a folder inside the workspace roots', async () => {
+        const machine = makeMachine('machine-mkdir-1')
+        const client = new ApiMachineClient('cli-token', machine, [workspaceRoot])
+
+        try {
+            const target = join(workspaceRoot, 'fresh')
+            const result = await callCreateDirectory(client, machine.id, target)
+            expect(result.success).toBe(true)
+            expect(result.path).toBe(join(realpathSync(workspaceRoot), 'fresh'))
+            expect(existsSync(target)).toBe(true)
+        } finally {
+            client.shutdown()
+        }
+    })
+
+    it('refuses a folder outside the workspace roots', async () => {
+        const machine = makeMachine('machine-mkdir-2')
+        const client = new ApiMachineClient('cli-token', machine, [join(workspaceRoot, 'taken')])
+
+        try {
+            const target = join(workspaceRoot, 'escaped')
+            const result = await callCreateDirectory(client, machine.id, target)
+            expect(result.success).toBe(false)
+            expect(result.error).toBe('Path is outside workspace roots')
+            expect(existsSync(target)).toBe(false)
+        } finally {
+            client.shutdown()
+        }
+    })
+
+    it('reports a name that is already taken and will not nest', async () => {
+        const machine = makeMachine('machine-mkdir-3')
+        const client = new ApiMachineClient('cli-token', machine, [workspaceRoot])
+
+        try {
+            const taken = await callCreateDirectory(client, machine.id, join(workspaceRoot, 'taken'))
+            expect(taken.success).toBe(false)
+            expect(taken.error).toMatch(/already exists/)
+
+            const nested = await callCreateDirectory(client, machine.id, join(workspaceRoot, 'missing', 'child'))
+            expect(nested.success).toBe(false)
+            expect(nested.error).toBe('Parent folder does not exist')
+            expect(existsSync(join(workspaceRoot, 'missing'))).toBe(false)
+        } finally {
+            client.shutdown()
+        }
+    })
+})
+
 describe('ApiMachineClient connect runner-state advertisement', () => {
     beforeEach(() => {
         ioMock.mockReset()

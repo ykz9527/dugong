@@ -1,9 +1,11 @@
 import { useState, type ReactNode } from 'react'
+import { isPathOwnedBy } from '@hapi/protocol'
 import type { CreateTaskRequest } from '@hapi/protocol/apiTypes'
 import type { ApiClient } from '@/api/client'
 import { useMachines } from '@/hooks/queries/useMachines'
 import { useActiveWorkspaceUser } from '@/hooks/queries/useWorkspaceUsers'
 import { useTaskActions, type AdoptTaskInput } from '@/hooks/mutations/useTaskActions'
+import { useWorkspaceUserActions } from '@/hooks/mutations/useWorkspaceUserActions'
 import { NewTaskDialog } from './NewTaskDialog'
 
 /** Where a composer opened from a folder starts. */
@@ -39,9 +41,22 @@ export function useNewTaskDialog(
     // dialog and nowhere else — the host's error line stays about the host's
     // own actions.
     const actions = useTaskActions(api)
+    const userActions = useWorkspaceUserActions(api)
+
+    // Starting work in a directory is what makes it yours. Claiming it here,
+    // before the task exists, means the list never has to show a task it is
+    // about to hide — and nobody has to visit the user list to make a project.
+    const claimWorkdir = async (workdir: string) => {
+        if (!workdir || !activeUser || isPathOwnedBy(workdir, activeUser.paths)) return
+        await userActions.updateWorkspaceUser({
+            id: activeUser.id,
+            patch: { paths: [...activeUser.paths, workdir] }
+        })
+    }
 
     const handleCreate = async (input: CreateTaskRequest) => {
         try {
+            await claimWorkdir(input.workdir)
             const created = await actions.createTask(input)
             if (created.start && created.start.outcome !== 'started') {
                 setStartFailure(created.start.message ?? created.start.outcome)
@@ -55,8 +70,9 @@ export function useNewTaskDialog(
         }
     }
 
-    const handleAdopt = async (input: AdoptTaskInput) => {
+    const handleAdopt = async (input: AdoptTaskInput, workdir: string) => {
         try {
+            await claimWorkdir(workdir)
             await actions.adoptTask(input)
             setIsOpen(false)
             options?.onCreated?.()
@@ -79,12 +95,12 @@ export function useNewTaskDialog(
                 machines={machines}
                 initialWorkdir={initial?.workdir}
                 initialMachineId={initial?.machineId}
-                userPaths={activeUser?.paths ?? []}
-                isPending={actions.isPending}
-                error={actions.error}
+                activeUser={activeUser}
+                isPending={actions.isPending || userActions.isPending}
+                error={actions.error ?? userActions.error}
                 startFailure={startFailure}
                 onSubmit={(input) => void handleCreate(input)}
-                onAdopt={(input) => void handleAdopt(input)}
+                onAdopt={(input, workdir) => void handleAdopt(input, workdir)}
                 onClose={() => {
                     setIsOpen(false)
                     if (startFailure !== null) options?.onCreated?.()

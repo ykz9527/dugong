@@ -31,6 +31,7 @@ export type {
     GrokReasoningEffortOption,
     ListDirectoryResponse,
     MachineDirectoryEntry,
+    MachineCreateDirectoryResponse,
     MachineListDirectoryResponse,
     MachinePathsExistsResponse,
     AuthResponse,

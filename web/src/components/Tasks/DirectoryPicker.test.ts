@@ -1,28 +1,29 @@
 import { describe, expect, it } from 'vitest'
-import { canGoUp, narrowRootsToUser } from './DirectoryPicker'
+import { canGoUp, folderNameProblem } from './DirectoryPicker'
 
-describe('narrowRootsToUser', () => {
-    it('keeps the machine roots when nobody is selected', () => {
-        expect(narrowRootsToUser(['/home/dev'], [])).toEqual(['/home/dev'])
+describe('canGoUp', () => {
+    it('stops the picker at the runner root', () => {
+        expect(canGoUp('/home/dev/ytest', ['/home/dev/ytest'])).toBe(false)
+        expect(canGoUp('/home/dev/ytest/proj', ['/home/dev/ytest'])).toBe(true)
     })
 
-    it('browses the user directories instead of the machine roots', () => {
-        expect(narrowRootsToUser(['/home/dev'], ['/home/dev/ytest', '/home/dev/projects/app']))
-            .toEqual(['/home/dev/ytest', '/home/dev/projects/app'])
+    it('never climbs above /', () => {
+        expect(canGoUp('/', [])).toBe(false)
+    })
+})
+
+describe('folderNameProblem', () => {
+    it('accepts a plain name', () => {
+        expect(folderNameProblem('new-project')).toBeNull()
+        expect(folderNameProblem('  padded  ')).toBeNull()
     })
 
-    it('drops user directories the runner would refuse', () => {
-        expect(narrowRootsToUser(['/home/dev/ytest'], ['/home/dev/ytest/a', '/srv/other']))
-            .toEqual(['/home/dev/ytest/a'])
-    })
-
-    it('falls back to the machine roots when none of the user directories are reachable', () => {
-        expect(narrowRootsToUser(['/home/dev/ytest'], ['/srv/other'])).toEqual(['/home/dev/ytest'])
-    })
-
-    it('stops the picker from climbing above a user directory', () => {
-        const roots = narrowRootsToUser(['/home/dev'], ['/home/dev/ytest'])
-        expect(canGoUp('/home/dev/ytest', roots)).toBe(false)
-        expect(canGoUp('/home/dev/ytest/proj', roots)).toBe(true)
+    it('refuses nothing, nesting and the dot names', () => {
+        expect(folderNameProblem('')).toBe('empty')
+        expect(folderNameProblem('   ')).toBe('empty')
+        expect(folderNameProblem('a/b')).toBe('separator')
+        expect(folderNameProblem('a\\b')).toBe('separator')
+        expect(folderNameProblem('.')).toBe('reserved')
+        expect(folderNameProblem('..')).toBe('reserved')
     })
 })

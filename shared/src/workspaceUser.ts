@@ -21,7 +21,12 @@ import { z } from 'zod'
  */
 
 export const WORKSPACE_USER_NAME_MAX_LENGTH = 60
-export const WORKSPACE_USER_MAX_PATHS = 20
+/**
+ * Every project a person starts from the board claims one more path, so the
+ * ceiling is set by how many projects a person plausibly has, not by how many
+ * roots an operator would type by hand.
+ */
+export const WORKSPACE_USER_MAX_PATHS = 100
 
 export const WorkspaceUserSchema = z.object({
     id: z.string(),

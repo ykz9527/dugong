@@ -47,6 +47,7 @@ import type {
     CopilotModelsResponse,
     GrokReasoningEffortResponse,
     ListDirectoryResponse,
+    MachineCreateDirectoryResponse,
     MachineListDirectoryResponse,
     MachinePathsExistsResponse,
     OpencodeModelsResponse,
@@ -1028,6 +1029,16 @@ export class ApiClient {
             {
                 method: 'POST',
                 body: JSON.stringify({ path, includeHidden: options?.includeHidden === true })
+            }
+        )
+    }
+
+    async createMachineDirectory(machineId: string, path: string): Promise<MachineCreateDirectoryResponse> {
+        return await this.request<MachineCreateDirectoryResponse>(
+            `/api/machines/${encodeURIComponent(machineId)}/create-directory`,
+            {
+                method: 'POST',
+                body: JSON.stringify({ path })
             }
         )
     }

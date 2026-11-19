@@ -161,6 +161,8 @@ everything not running under them. Anyone in the namespace can read and edit the
 
 - `GET /api/machines` - List online machines.
 - `POST /api/machines/:id/spawn` - Spawn new session on machine.
+- `POST /api/machines/:id/list-directory` - List a directory within the runner's workspace roots.
+- `POST /api/machines/:id/create-directory` - Create one folder within the runner's workspace roots.
 - `POST /api/machines/:id/paths/exists` - Check if path exists.
 
 ### Usage (`src/web/routes/usage.ts`)

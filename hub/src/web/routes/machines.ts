@@ -1,5 +1,6 @@
 import {
     MACHINE_DISPLAY_NAME_MAX_LENGTH,
+    MachineCreateDirectoryRequestSchema,
     MachineListDirectoryRequestSchema,
     MachinePathsExistsRequestSchema,
     RenameMachineRequestSchema,
@@ -134,6 +135,32 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json(result)
         } catch (error) {
             return c.json({ error: error instanceof Error ? error.message : 'Failed to list directory' }, 500)
+        }
+    })
+
+    app.post('/machines/:id/create-directory', async (c) => {
+        const engine = getSyncEngine()
+        if (!engine) {
+            return c.json({ error: 'Not connected' }, 503)
+        }
+
+        const machineId = c.req.param('id')
+        const machine = requireMachine(c, engine, machineId)
+        if (machine instanceof Response) {
+            return machine
+        }
+
+        const body = await c.req.json().catch(() => null)
+        const parsed = MachineCreateDirectoryRequestSchema.safeParse(body)
+        if (!parsed.success) {
+            return c.json({ error: 'Invalid body' }, 400)
+        }
+
+        try {
+            const result = await engine.createMachineDirectory(machineId, parsed.data.path)
+            return c.json(result)
+        } catch (error) {
+            return c.json({ error: error instanceof Error ? error.message : 'Failed to create directory' }, 500)
         }
     })
 

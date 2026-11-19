@@ -24,6 +24,7 @@ import type {
     GrokModelsResponse,
     GrokReasoningEffortResponse,
     ListDirectoryResponse,
+    MachineCreateDirectoryResponse,
     ListClaudeSessionsRpcResponse,
     ListCodexSessionsRpcResponse,
     ListPiSessionsRpcResponse,
@@ -287,6 +288,14 @@ export class RpcGateway {
             return { success: false, error: 'Unexpected list-directory result' }
         }
         return result as RpcListDirectoryResponse
+    }
+
+    async createMachineDirectory(machineId: string, path: string): Promise<MachineCreateDirectoryResponse> {
+        const result = await this.machineRpc(machineId, RPC_METHODS.CreateMachineDirectory, { path }) as MachineCreateDirectoryResponse | unknown
+        if (!result || typeof result !== 'object') {
+            return { success: false, error: 'Unexpected create-directory result' }
+        }
+        return result as MachineCreateDirectoryResponse
     }
 
     async checkPathsExist(machineId: string, paths: string[]): Promise<Record<string, boolean>> {
