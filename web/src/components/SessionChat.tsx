@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
@@ -112,12 +112,16 @@ import { useGrokReasoningEffortOptions } from '@/hooks/queries/useGrokReasoningE
 import { usePiModels } from '@/hooks/queries/usePiModels'
 import { useOpencodeReasoningEffortOptions } from '@/hooks/queries/useOpencodeReasoningEffortOptions'
 import { useVoiceOptional } from '@/lib/voice-context'
-import { AgentTerminalView } from '@/components/AgentTerminal/AgentTerminalView'
-import { ShellTerminalPanel } from '@/components/Terminal/ShellTerminalPanel'
 import { useCompactTerminalControls } from '@/hooks/useCompactTerminalControls'
 import { queueShellCommand } from '@/lib/shellTerminal'
 import { VoiceBackendSession, registerSessionStore, registerVoiceHooksStore, voiceHooks } from '@/realtime'
 import { isRemoteTerminalSupported } from '@/utils/terminalSupport'
+
+// xterm (~430 KB) loads with the first terminal shown, not with every chat.
+const AgentTerminalView = lazy(() => import('@/components/AgentTerminal/AgentTerminalView')
+    .then((module) => ({ default: module.AgentTerminalView })))
+const ShellTerminalPanel = lazy(() => import('@/components/Terminal/ShellTerminalPanel')
+    .then((module) => ({ default: module.ShellTerminalPanel })))
 
 type SessionModelSelection = { provider: string; modelId: string } | string | null
 
@@ -1888,11 +1892,13 @@ function SessionChatInner(props: SessionChatProps) {
                     <div className="relative flex min-h-0 flex-1 flex-col">
                         {canViewAgentTerminal && (
                             // SessionChatInner is keyed by session.id, so switching sessions remounts this subtree.
-                            <AgentTerminalView
-                                sessionId={props.session.id}
-                                visible={terminalVisible}
-                                className={terminalVisible ? 'flex-1 min-h-0' : 'hidden'}
-                            />
+                            <Suspense fallback={null}>
+                                <AgentTerminalView
+                                    sessionId={props.session.id}
+                                    visible={terminalVisible}
+                                    className={terminalVisible ? 'flex-1 min-h-0' : 'hidden'}
+                                />
+                            </Suspense>
                         )}
                         <div className={(terminalVisible && canViewAgentTerminal) ? 'hidden' : 'flex min-h-0 flex-1 flex-col'}>
 
@@ -1936,11 +1942,13 @@ function SessionChatInner(props: SessionChatProps) {
                     </div>
 
                     {shellPanelVisible ? (
-                        <ShellTerminalPanel
-                            sessionId={props.session.id}
-                            cwd={props.session.metadata?.path ?? null}
-                            onClose={handleCloseShellPanel}
-                        />
+                        <Suspense fallback={null}>
+                            <ShellTerminalPanel
+                                sessionId={props.session.id}
+                                cwd={props.session.metadata?.path ?? null}
+                                onClose={handleCloseShellPanel}
+                            />
+                        </Suspense>
                     ) : null}
 
                     <div className={outlineOpen ? 'max-sm:hidden' : undefined}>
