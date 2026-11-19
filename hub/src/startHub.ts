@@ -115,8 +115,18 @@ export interface StartHubOptions {
     args?: string[]
 }
 
+function logUnhandledRejection(reason: unknown): void {
+    console.error('[hub] Unhandled promise rejection:', reason)
+}
+
 export async function startHub(options: StartHubOptions = {}): Promise<HubInstance> {
     console.log('dugong hub starting...')
+
+    // Bun exits on an unhandled rejection. One stray promise in a timer or a
+    // background service must not drop every session and terminal with it.
+    if (!process.listeners('unhandledRejection').includes(logUnhandledRejection)) {
+        process.on('unhandledRejection', logUnhandledRejection)
+    }
 
     let syncEngine: SyncEngine | null = null
     let taskOrchestrator: TaskOrchestrator | null = null

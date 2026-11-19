@@ -15,6 +15,7 @@ import { isAllowedSocketOrigin } from './socketOrigin'
 import type { SyncEvent } from '../sync/syncEngine'
 import { TerminalRegistry } from './terminalRegistry'
 import { clearUserTerminalBuffer } from './userTerminalBuffer'
+import { guardSocketListeners } from './guardListeners'
 import type { CliSocketWithData, SocketData, SocketServer } from './socketTypes'
 
 const jwtPayloadSchema = z.object({
@@ -122,22 +123,25 @@ export function createSocketServer(deps: SocketServerDeps): {
         socket.data.namespace = parsedToken.namespace
         next()
     })
-    cliNs.on('connection', (socket) => registerCliHandlers(socket as CliSocketWithData, {
-        io,
-        store: deps.store,
-        rpcRegistry,
-        terminalRegistry,
-        onSessionAlive: deps.onSessionAlive,
-        onSessionReady: deps.onSessionReady,
-        onSessionEnd: deps.onSessionEnd,
-        onMachineAlive: deps.onMachineAlive,
-        onWebappEvent: deps.onWebappEvent,
-        onBackgroundTaskDelta: deps.onBackgroundTaskDelta,
-        onBackgroundTaskCount: deps.onBackgroundTaskCount,
-        onSessionActivity: deps.onSessionActivity,
-        onSweepImmediateQueued: deps.onSweepImmediateQueued,
-        onMessagesConsumed: deps.onMessagesConsumed
-    }))
+    cliNs.on('connection', (socket) => {
+        guardSocketListeners(socket, 'cli')
+        registerCliHandlers(socket as CliSocketWithData, {
+            io,
+            store: deps.store,
+            rpcRegistry,
+            terminalRegistry,
+            onSessionAlive: deps.onSessionAlive,
+            onSessionReady: deps.onSessionReady,
+            onSessionEnd: deps.onSessionEnd,
+            onMachineAlive: deps.onMachineAlive,
+            onWebappEvent: deps.onWebappEvent,
+            onBackgroundTaskDelta: deps.onBackgroundTaskDelta,
+            onBackgroundTaskCount: deps.onBackgroundTaskCount,
+            onSessionActivity: deps.onSessionActivity,
+            onSweepImmediateQueued: deps.onSweepImmediateQueued,
+            onMessagesConsumed: deps.onMessagesConsumed
+        })
+    })
 
     terminalNs.use(async (socket, next) => {
         const auth = socket.handshake.auth as Record<string, unknown> | undefined
@@ -160,15 +164,18 @@ export function createSocketServer(deps: SocketServerDeps): {
             return next(new Error('Invalid token'))
         }
     })
-    terminalNs.on('connection', (socket) => registerTerminalHandlers(socket, {
-        io,
-        getSession: (sessionId) => {
-            return deps.getSession?.(sessionId) ?? deps.store.sessions.getSession(sessionId)
-        },
-        terminalRegistry,
-        maxTerminalsPerSocket,
-        maxTerminalsPerSession
-    }))
+    terminalNs.on('connection', (socket) => {
+        guardSocketListeners(socket, 'terminal')
+        registerTerminalHandlers(socket, {
+            io,
+            getSession: (sessionId) => {
+                return deps.getSession?.(sessionId) ?? deps.store.sessions.getSession(sessionId)
+            },
+            terminalRegistry,
+            maxTerminalsPerSocket,
+            maxTerminalsPerSession
+        })
+    })
 
     return { io, engine, rpcRegistry }
 }
