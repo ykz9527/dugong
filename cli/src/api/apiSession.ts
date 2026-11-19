@@ -132,6 +132,8 @@ type PendingOutboundEvent = {
 const MAX_PENDING_DROPPABLE_EVENTS = 256
 const MATERIALIZATION_RETRY_MIN_MS = 1_000
 const MATERIALIZATION_RETRY_MAX_MS = 30_000
+/** How long user shells survive a lost hub connection before they are closed. */
+export const TERMINAL_DISCONNECT_GRACE_MS = 10 * 60_000
 
 function isTransientMaterializationError(error: unknown): boolean {
     if (!axios.isAxiosError(error)) {
@@ -203,6 +205,7 @@ export class ApiSessionClient extends EventEmitter {
     readonly awaitedBackgroundTasks = new AwaitedBackgroundTasks()
     readonly rpcHandlerManager: RpcHandlerManager
     private readonly terminalManager: TerminalManager
+    private terminalTeardownTimer: ReturnType<typeof setTimeout> | null = null
     private agentTerminalResize: ((cols: number, rows: number) => void) | null = null
     // Writes raw keystroke(s) from a web viewer into the agent PTY (interactive
     // TUI navigation). Null until the agent is spawned and after it exits.
@@ -289,7 +292,13 @@ export class ApiSessionClient extends EventEmitter {
             sessionId: this.sessionId,
             getSessionPath: () => this.metadata?.path ?? null,
             onReady: (payload) => this.socket.emit('terminal:ready', payload),
-            onOutput: (payload) => this.socket.emit('terminal:output', payload),
+            // The hub forgets a terminal while this socket is down, and
+            // socket.io would buffer every chunk until reconnect: drop them.
+            onOutput: (payload) => {
+                if (this.socket.connected) {
+                    this.socket.emit('terminal:output', payload)
+                }
+            },
             onExit: (payload) => this.socket.emit('terminal:exit', payload),
             onError: (payload) => this.socket.emit('terminal:error', payload)
         })
@@ -298,6 +307,7 @@ export class ApiSessionClient extends EventEmitter {
             logger.debug('Socket connected successfully')
             this.awaitingMaterializedConnection = false
             this.rpcHandlerManager.onSocketConnect(this.socket)
+            this.cancelTerminalTeardown()
             if (this.hasConnectedOnce) {
                 this.needsBackfill = true
             }
@@ -318,7 +328,10 @@ export class ApiSessionClient extends EventEmitter {
         this.socket.on('disconnect', (reason) => {
             logger.debug('[API] Socket disconnected:', reason)
             this.rpcHandlerManager.onSocketDisconnect()
-            this.terminalManager.closeAll()
+            // A hub restart or a network blip must not kill the user's dev
+            // servers and builds: the web reattaches by terminal id after
+            // reconnect. Only a long outage tears the shells down.
+            this.scheduleTerminalTeardown()
             if (this.hasConnectedOnce) {
                 this.needsBackfill = true
             }
@@ -1511,6 +1524,22 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
+    private scheduleTerminalTeardown(): void {
+        this.cancelTerminalTeardown()
+        this.terminalTeardownTimer = setTimeout(() => {
+            this.terminalTeardownTimer = null
+            this.terminalManager.closeAll()
+        }, TERMINAL_DISCONNECT_GRACE_MS)
+        this.terminalTeardownTimer.unref?.()
+    }
+
+    private cancelTerminalTeardown(): void {
+        if (this.terminalTeardownTimer) {
+            clearTimeout(this.terminalTeardownTimer)
+            this.terminalTeardownTimer = null
+        }
+    }
+
     close(): void {
         if (this.state === 'closed') {
             return
@@ -1523,6 +1552,7 @@ export class ApiSessionClient extends EventEmitter {
         this.awaitingMaterializedConnection = false
         this.pendingOutboundEvents.length = 0
         this.rpcHandlerManager.onSocketDisconnect()
+        this.cancelTerminalTeardown()
         this.terminalManager.closeAll()
         this.stopGeneratedMediaPush()
         this.socket.disconnect()

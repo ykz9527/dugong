@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Session } from './types'
 
 const socketHarness = vi.hoisted(() => ({
@@ -94,7 +94,8 @@ vi.mock('axios', () => ({
     }
 }))
 
-import { ApiSessionClient, isExternalUserMessage, IncomingMessageFilter } from './apiSession'
+import { ApiSessionClient, isExternalUserMessage, IncomingMessageFilter, TERMINAL_DISCONNECT_GRACE_MS } from './apiSession'
+import { TerminalManager } from '@/terminal/TerminalManager'
 
 function createSession(overrides: Partial<Session> = {}): Session {
     return {
@@ -852,5 +853,34 @@ describe('IncomingMessageFilter (HAPI Bot R3 finding #1)', () => {
         expect(filter.accept({ id: 'pending', seq: 7 })).toBe(false)
         expect(filter.accept({ id: 'a', seq: 8 })).toBe(true)
         expect(filter.accept({ id: 'b', seq: 9 })).toBe(true)
+    })
+})
+
+describe('ApiSessionClient user shells across a lost connection', () => {
+    afterEach(() => {
+        vi.useRealTimers()
+        vi.restoreAllMocks()
+    })
+
+    it('keeps shells through a short disconnect and closes them after the grace period', () => {
+        vi.useFakeTimers()
+        const closeAll = vi.spyOn(TerminalManager.prototype, 'closeAll')
+        socketHarness.sockets.length = 0
+        const client = new ApiSessionClient('token', createSession({ namespace: 'default' }))
+        const socket = socketHarness.sockets[0]
+        if (!socket) throw new Error('expected socket')
+
+        socket.connected = false
+        socket.trigger('disconnect', 'transport close')
+        vi.advanceTimersByTime(TERMINAL_DISCONNECT_GRACE_MS - 1)
+        socket.triggerConnect()
+        vi.advanceTimersByTime(TERMINAL_DISCONNECT_GRACE_MS)
+        expect(closeAll).not.toHaveBeenCalled()
+
+        socket.connected = false
+        socket.trigger('disconnect', 'transport close')
+        vi.advanceTimersByTime(TERMINAL_DISCONNECT_GRACE_MS)
+        expect(closeAll).toHaveBeenCalledTimes(1)
+        client.close()
     })
 })
