@@ -213,7 +213,18 @@ function findWebappDistDir(): { distDir: string; indexHtmlPath: string } {
     return { distDir, indexHtmlPath: join(distDir, 'index.html') }
 }
 
-function serveEmbeddedAsset(asset: EmbeddedWebAsset): Response {
+const COMPRESSIBLE_MIME = /^(text\/|application\/(javascript|json|manifest\+json|xml)|image\/svg\+xml)/
+/** Vite's content-hashed output: a changed file always gets a new name. */
+const IMMUTABLE_ASSET_CACHE_CONTROL = 'public, max-age=31536000, immutable'
+const gzippedEmbeddedAssets = new Map<string, Uint8Array>()
+
+/**
+ * Serve one embedded web file. The bundle is several MB of JS/CSS that every
+ * device downloads again after each deploy (the service worker precaches all
+ * of it), much of it through the relay tunnel: gzip compressible files once,
+ * keep the result in memory, and let browsers cache hashed files for good.
+ */
+async function serveEmbeddedAsset(asset: EmbeddedWebAsset, acceptEncoding: string | undefined): Promise<Response> {
     const headers: Record<string, string> = {
         'Content-Type': asset.mimeType
     }
@@ -222,6 +233,23 @@ function serveEmbeddedAsset(asset: EmbeddedWebAsset): Response {
         headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
         headers['CDN-Cache-Control'] = 'no-store'
         headers['Cloudflare-CDN-Cache-Control'] = 'no-store'
+    } else if (asset.path.startsWith('/assets/')) {
+        headers['Cache-Control'] = IMMUTABLE_ASSET_CACHE_CONTROL
+    } else if (asset.path === '/index.html') {
+        headers['Cache-Control'] = 'no-cache'
+    }
+
+    if (COMPRESSIBLE_MIME.test(asset.mimeType)) {
+        headers['Vary'] = 'Accept-Encoding'
+        if (acceptsGzip(acceptEncoding)) {
+            let gzipped = gzippedEmbeddedAssets.get(asset.sourcePath)
+            if (!gzipped) {
+                gzipped = Bun.gzipSync(await Bun.file(asset.sourcePath).bytes())
+                gzippedEmbeddedAssets.set(asset.sourcePath, gzipped)
+            }
+            headers['Content-Encoding'] = 'gzip'
+            return new Response(gzipped, { headers })
+        }
     }
 
     return new Response(Bun.file(asset.sourcePath), {
@@ -428,7 +456,7 @@ serve this hub's own frontend — including anything the official app does not h
 
             const asset = embeddedAssetMap.get(c.req.path)
             if (asset) {
-                return serveEmbeddedAsset(asset)
+                return await serveEmbeddedAsset(asset, c.req.header('Accept-Encoding'))
             }
 
             return await next()
@@ -440,7 +468,7 @@ serve this hub's own frontend — including anything the official app does not h
                 return
             }
 
-            return serveEmbeddedAsset(indexHtmlAsset)
+            return await serveEmbeddedAsset(indexHtmlAsset, c.req.header('Accept-Encoding'))
         })
 
         return app
@@ -458,6 +486,18 @@ serve this hub's own frontend — including anything the official app does not h
         return app
     }
 
+    app.use('/assets/*', async (c, next) => {
+        await next()
+        if (c.res.status === 200) {
+            c.header('Cache-Control', IMMUTABLE_ASSET_CACHE_CONTROL)
+        }
+    })
+    app.use('/assets/*', async (c, next) => {
+        if (acceptsGzip(c.req.header('Accept-Encoding'))) {
+            return gzipCompress(c, next)
+        }
+        return next()
+    })
     app.use('/assets/*', serveStatic({ root: distDir }))
 
     app.use('*', async (c, next) => {
