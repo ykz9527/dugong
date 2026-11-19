@@ -2,13 +2,15 @@
  * Design decisions:
  * - Logging should be done only through file for debugging, otherwise we might disturb the claude session when in interactive mode
  * - Use info for logs that are useful to the user - this is our UI
- * - File output location: ~/.handy/logs/<date time in local timezone>.log
+ * - File output location: <DUGONG_HOME>/logs/<date time in local timezone>.log
+ * - The runner prunes files older than LOG_RETENTION_MS
  */
 
 import chalk from 'chalk'
 import { appendFileSync } from 'fs'
 import { configuration } from '@/configuration'
-import { existsSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, statSync, unlinkSync } from 'node:fs'
+import { readdir, stat, unlink } from 'node:fs/promises'
 import { join, basename } from 'node:path'
 import { readRunnerState } from '@/persistence'
 
@@ -46,6 +48,7 @@ function getSessionLogPath(): string {
 
 class Logger {
   private dangerouslyUnencryptedServerLoggingUrl: string | undefined
+  private discarded = false
 
   constructor(
     public readonly logFilePath = getSessionLogPath()
@@ -85,6 +88,7 @@ class Logger {
   ): void {
     if (!process.env.DEBUG) {
       this.debug(`In production, skipping message inspection`)
+      return
     }
 
     // Some of our messages are huge, but we still want to show them in the logs
@@ -146,6 +150,20 @@ class Logger {
   getLogPath(): string {
     return this.logFilePath
   }
+
+  /**
+   * Delete this process's log file and stop writing to it. For processes
+   * whose whole run carries no information, such as a `runner start-sync`
+   * that finds the runner already up (systemd repeats it every few seconds).
+   */
+  discardLogFile(): void {
+    this.discarded = true
+    try {
+      unlinkSync(this.logFilePath)
+    } catch {
+      // Never written, or already gone.
+    }
+  }
   
   private logToConsole(level: 'debug' | 'error' | 'info' | 'warn', prefix: string, message: string, ...args: unknown[]): void {
     switch (level) {
@@ -200,6 +218,9 @@ class Logger {
   }
 
   private logToFile(prefix: string, message: string, ...args: unknown[]): void {
+    if (this.discarded) {
+      return
+    }
     const logLine = `${prefix} ${message} ${args.map(arg => 
       typeof arg === 'string' ? arg : JSON.stringify(arg)
     ).join(' ')}\n`
@@ -232,6 +253,45 @@ class Logger {
 
 // Will be initialized immideately on startup
 export let logger = new Logger()
+
+export const LOG_RETENTION_MS = 7 * 24 * 60 * 60_000
+
+/**
+ * Delete `.log` files in `logsDir` last modified more than `maxAgeMs` ago.
+ * Returns how many were removed. Errors on single files are skipped.
+ */
+export async function pruneLogFiles(
+  logsDir: string = configuration.logsDir,
+  maxAgeMs: number = LOG_RETENTION_MS,
+  now: number = Date.now(),
+): Promise<number> {
+  let entries: string[]
+  try {
+    entries = await readdir(logsDir)
+  } catch {
+    return 0
+  }
+  let removed = 0
+  for (const entry of entries) {
+    if (!entry.endsWith('.log')) {
+      continue
+    }
+    const path = join(logsDir, entry)
+    if (path === logger.logFilePath) {
+      continue
+    }
+    try {
+      const info = await stat(path)
+      if (info.isFile() && now - info.mtimeMs > maxAgeMs) {
+        await unlink(path)
+        removed += 1
+      }
+    } catch {
+      // Raced with another pruner or a writer; leave it.
+    }
+  }
+  return removed
+}
 
 /**
  * Information about a log file on disk

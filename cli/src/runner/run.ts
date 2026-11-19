@@ -6,7 +6,7 @@ import { ApiClient } from '@/api/api';
 import { TrackedSession } from './types';
 import { RunnerState, Metadata } from '@/api/types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/rpcTypes';
-import { logger } from '@/ui/logger';
+import { LOG_RETENTION_MS, logger, pruneLogFiles } from '@/ui/logger';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
 import { configuration } from '@/configuration';
 import packageJson from '../../package.json';
@@ -251,8 +251,8 @@ export async function startRunner(options: { workspaceRoots?: string[] } = {}): 
       logger.debug('[RUNNER RUN] Runner version mismatch detected, restarting runner with current CLI version');
       await stopRunner();
     } else {
-      logger.debug('[RUNNER RUN] Runner version matches, keeping existing runner');
       console.log('Runner already running with matching version');
+      logger.discardLogFile();
       process.exit(0);
     }
   }
@@ -266,7 +266,7 @@ export async function startRunner(options: { workspaceRoots?: string[] } = {}): 
   const lockDelayIncrementMs = isAuthorizedHandoff ? 500 : 200;
   const initialLockHandle = await acquireRunnerLock(lockMaxAttempts, lockDelayIncrementMs);
   if (!initialLockHandle) {
-    logger.debug('[RUNNER RUN] Runner lock file already held, another runner is running');
+    logger.discardLogFile();
     process.exit(0);
   }
   // `let` because the heartbeat-restart handoff path below may release and
@@ -283,6 +283,17 @@ export async function startRunner(options: { workspaceRoots?: string[] } = {}): 
     // Ensure auth and machine registration BEFORE anything else
     const { machineId } = await authAndSetupMachineIfNeeded();
     logger.debug('[RUNNER RUN] Auth and machine setup complete');
+
+    // Every CLI process writes its own log file; nothing else deletes them.
+    const pruneLogs = () => {
+      void pruneLogFiles().then((removed) => {
+        if (removed > 0) {
+          logger.debug(`[RUNNER RUN] Pruned ${removed} log files older than ${LOG_RETENTION_MS / 86_400_000} days`);
+        }
+      });
+    };
+    pruneLogs();
+    setInterval(pruneLogs, 24 * 60 * 60_000).unref();
 
     // Setup state - key by PID
     const pidToTrackedSession = new Map<number, TrackedSession>();
