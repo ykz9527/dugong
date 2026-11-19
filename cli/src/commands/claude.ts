@@ -6,6 +6,8 @@ import type { StartOptions } from '@/claude/runClaude'
 import { CLAUDE_PERMISSION_MODES } from '@hapi/protocol/modes'
 import { configuration } from '@/configuration'
 import { isRunnerRunningCurrentlyInstalledHappyVersion } from '@/runner/controlClient'
+import { runnerRestartArgs } from '@/runner/restartArgs'
+import { readRunnerState } from '@/persistence'
 import { authAndSetupMachineIfNeeded } from '@/ui/auth'
 import { logger } from '@/ui/logger'
 import { initializeToken } from '@/ui/tokenInit'
@@ -168,7 +170,10 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
         if (!(await isRunnerRunningCurrentlyInstalledHappyVersion())) {
             logger.debug('Starting dugong background service...')
 
-            const runnerProcess = spawnHappyCLI(['runner', 'start-sync'], {
+            // Keep the running runner's --workspace-root limits: the new one
+            // replaces it, and a bare start would lift them.
+            const previousArgv = (await readRunnerState())?.startedWithArgv
+            const runnerProcess = spawnHappyCLI(runnerRestartArgs(previousArgv), {
                 detached: true,
                 stdio: 'ignore',
                 env: process.env
