@@ -1,61 +1,64 @@
 import { createHighlighterCore } from 'shiki/core'
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
-import type { HighlighterCore } from 'shiki/core'
+import type { HighlighterCore, LanguageRegistration } from 'shiki/core'
 import type { Root, RootContent } from 'hast'
 import { useState, useEffect, useMemo, type ReactNode } from 'react'
 import { toJsxRuntime } from 'hast-util-to-jsx-runtime'
 import { jsx, jsxs, Fragment } from 'react/jsx-runtime'
 
-// Only 2 themes
+// Loaded with the highlighter, which is created on the first code block.
 const THEMES = [
-    import('@shikijs/themes/github-light'),
-    import('@shikijs/themes/github-dark'),
+    () => import('@shikijs/themes/github-light'),
+    () => import('@shikijs/themes/github-dark'),
 ]
 
-// 30 common languages for LLM code output
-const LANGS = [
+// Common languages for LLM code output, each fetched the first time a block
+// in that language is highlighted. Top-level `import()` calls here used to
+// fetch and evaluate every grammar (~1.6 MB) as soon as this module loaded,
+// on every page.
+const LANG_LOADERS: Record<string, () => Promise<{ default: LanguageRegistration[] }>> = {
     // Shell
-    import('@shikijs/langs/shellscript'),
-    import('@shikijs/langs/powershell'),
+    shellscript: () => import('@shikijs/langs/shellscript'),
+    powershell: () => import('@shikijs/langs/powershell'),
     // Data formats
-    import('@shikijs/langs/json'),
-    import('@shikijs/langs/yaml'),
-    import('@shikijs/langs/toml'),
-    import('@shikijs/langs/xml'),
-    import('@shikijs/langs/ini'),
+    json: () => import('@shikijs/langs/json'),
+    yaml: () => import('@shikijs/langs/yaml'),
+    toml: () => import('@shikijs/langs/toml'),
+    xml: () => import('@shikijs/langs/xml'),
+    ini: () => import('@shikijs/langs/ini'),
     // Markup
-    import('@shikijs/langs/markdown'),
-    import('@shikijs/langs/html'),
-    import('@shikijs/langs/css'),
-    import('@shikijs/langs/scss'),
+    markdown: () => import('@shikijs/langs/markdown'),
+    html: () => import('@shikijs/langs/html'),
+    css: () => import('@shikijs/langs/css'),
+    scss: () => import('@shikijs/langs/scss'),
     // JavaScript ecosystem
-    import('@shikijs/langs/javascript'),
-    import('@shikijs/langs/typescript'),
-    import('@shikijs/langs/jsx'),
-    import('@shikijs/langs/tsx'),
+    javascript: () => import('@shikijs/langs/javascript'),
+    typescript: () => import('@shikijs/langs/typescript'),
+    jsx: () => import('@shikijs/langs/jsx'),
+    tsx: () => import('@shikijs/langs/tsx'),
     // Query languages
-    import('@shikijs/langs/sql'),
-    import('@shikijs/langs/graphql'),
+    sql: () => import('@shikijs/langs/sql'),
+    graphql: () => import('@shikijs/langs/graphql'),
     // Systems languages
-    import('@shikijs/langs/c'),
-    import('@shikijs/langs/rust'),
-    import('@shikijs/langs/go'),
+    c: () => import('@shikijs/langs/c'),
+    rust: () => import('@shikijs/langs/rust'),
+    go: () => import('@shikijs/langs/go'),
     // JVM
-    import('@shikijs/langs/java'),
-    import('@shikijs/langs/kotlin'),
+    java: () => import('@shikijs/langs/java'),
+    kotlin: () => import('@shikijs/langs/kotlin'),
     // Scripting
-    import('@shikijs/langs/python'),
-    import('@shikijs/langs/php'),
+    python: () => import('@shikijs/langs/python'),
+    php: () => import('@shikijs/langs/php'),
     // Apple
-    import('@shikijs/langs/swift'),
+    swift: () => import('@shikijs/langs/swift'),
     // .NET
-    import('@shikijs/langs/csharp'),
+    csharp: () => import('@shikijs/langs/csharp'),
     // DevOps
-    import('@shikijs/langs/dockerfile'),
-    import('@shikijs/langs/make'),
+    dockerfile: () => import('@shikijs/langs/dockerfile'),
+    make: () => import('@shikijs/langs/make'),
     // Misc
-    import('@shikijs/langs/diff'),
-]
+    diff: () => import('@shikijs/langs/diff'),
+}
 
 export const SHIKI_THEMES = {
     light: 'github-light',
@@ -96,11 +99,28 @@ function getHighlighter(): Promise<HighlighterCore> {
     if (!highlighterPromise) {
         highlighterPromise = createHighlighterCore({
             themes: THEMES,
-            langs: LANGS,
+            langs: [],
             engine: createJavaScriptRegexEngine({ forgiving: true }),
         })
     }
     return highlighterPromise
+}
+
+const languageLoads = new Map<string, Promise<boolean>>()
+
+/** Load `lang` into the highlighter if we bundle it; false when unsupported. */
+function ensureLanguage(highlighter: HighlighterCore, lang: string): Promise<boolean> {
+    if (lang === 'text') return Promise.resolve(false)
+    // Also covers the aliases a loaded grammar declares (e.g. `golang`).
+    if (highlighter.getLoadedLanguages().includes(lang)) return Promise.resolve(true)
+    const loader = LANG_LOADERS[lang]
+    if (!loader) return Promise.resolve(false)
+    let load = languageLoads.get(lang)
+    if (!load) {
+        load = highlighter.loadLanguage(loader).then(() => true, () => false)
+        languageLoads.set(lang, load)
+    }
+    return load
 }
 
 function resolveLanguage(lang: string | undefined): string {
@@ -191,10 +211,11 @@ export function useShikiHighlighter(
             const highlighter = await getHighlighter()
             if (cancelled) return
 
-            const loadedLangs = highlighter.getLoadedLanguages()
+            const supported = await ensureLanguage(highlighter, lang)
+            if (cancelled) return
 
             // Skip highlighting for unsupported languages (graceful fallback to plain text)
-            if (lang === 'text' || !loadedLangs.includes(lang)) {
+            if (!supported) {
                 setHighlighted(null)
                 return
             }
@@ -249,10 +270,11 @@ export function useShikiHighlightedLines(
             const highlighter = await getHighlighter()
             if (cancelled) return
 
-            const loadedLangs = highlighter.getLoadedLanguages()
+            const supported = await ensureLanguage(highlighter, lang)
+            if (cancelled) return
 
             // Skip highlighting for unsupported languages (graceful fallback to plain text)
-            if (lang === 'text' || !loadedLangs.includes(lang)) {
+            if (!supported) {
                 setLines(null)
                 return
             }
