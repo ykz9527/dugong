@@ -239,6 +239,13 @@ function getSessionPatch(value: unknown): SessionPatch | null {
     return Object.keys(parsed.data).length > 0 ? parsed.data : null
 }
 
+/** True when two records of one machine differ only in keep-alive timestamps. */
+export function isMachineKeepAliveOnly(current: Machine, next: Machine): boolean {
+    const { activeAt: _currentActiveAt, updatedAt: _currentUpdatedAt, ...currentRest } = current
+    const { activeAt: _nextActiveAt, updatedAt: _nextUpdatedAt, ...nextRest } = next
+    return JSON.stringify(currentRest) === JSON.stringify(nextRest)
+}
+
 function isMachineRecord(value: unknown): value is Machine {
     return MachineSchema.safeParse(value).success
 }
@@ -734,6 +741,13 @@ export function useSSE(options: {
                 }
 
                 if (index >= 0) {
+                    // The CLI sends machine-alive every 20 s and the hub
+                    // rebroadcasts the full record. A new array identity
+                    // re-renders every machine subscriber (the whole chat),
+                    // and nothing shows a machine's keep-alive times.
+                    if (isMachineKeepAliveOnly(nextMachines[index], machine)) {
+                        return previous
+                    }
                     nextMachines[index] = machine
                 } else {
                     nextMachines.push(machine)
@@ -753,6 +767,18 @@ export function useSSE(options: {
                 }
                 return { ...previous, machines: nextMachines }
             })
+        }
+
+        const isKnownActiveMachineKeepAlive = (
+            machineId: string,
+            patch: { active?: boolean; activeAt?: number; updatedAt?: number }
+        ): boolean => {
+            if (patch.active === false) {
+                return false
+            }
+            const machines = queryClient.getQueryData<MachinesResponse>(queryKeys.machines)?.machines
+            const known = machines?.find((item) => item.id === machineId)
+            return known?.active === true
         }
 
         const handleSyncEvent = (event: SyncEvent) => {
@@ -913,6 +939,8 @@ export function useSSE(options: {
                     const patch = getMachinePatch(event.data)
                     if (patch?.active === false) {
                         removeMachine(event.machineId)
+                    } else if (patch && isKnownActiveMachineKeepAlive(event.machineId, patch)) {
+                        // Keep-alive times only: nothing on screen changes.
                     } else {
                         queueMachinesInvalidation()
                     }

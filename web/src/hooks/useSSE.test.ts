@@ -9,6 +9,7 @@ import {
     canApplyVersionedSummaryPatch,
     isGlobalScopedMessageStreamEvent,
     isNewerVersionedPatch,
+    isMachineKeepAliveOnly,
     isRenderIrrelevantPatch,
     isRenderIrrelevantSessionPatch,
     isToastInActiveWorkspaceScope,
@@ -391,6 +392,31 @@ describe('isToastInActiveWorkspaceScope', () => {
     it('keeps a toast from a hub too old to send paths', () => {
         expect(isToastInActiveWorkspaceScope(undefined, roots)).toBe(true)
         expect(isToastInActiveWorkspaceScope([], roots)).toBe(true)
+    })
+})
+
+describe('isMachineKeepAliveOnly', () => {
+    const machine = {
+        id: 'm1',
+        namespace: 'default',
+        seq: 1,
+        createdAt: 1,
+        updatedAt: 10,
+        active: true,
+        activeAt: 10,
+        metadata: null,
+        metadataVersion: 1,
+        runnerState: null,
+        runnerStateVersion: 1,
+        health: null
+    }
+
+    it('ignores keep-alive timestamps', () => {
+        expect(isMachineKeepAliveOnly(machine, { ...machine, activeAt: 30, updatedAt: 30 })).toBe(true)
+    })
+
+    it('sees any other change', () => {
+        expect(isMachineKeepAliveOnly(machine, { ...machine, activeAt: 30, runnerStateVersion: 2 })).toBe(false)
     })
 })
 
