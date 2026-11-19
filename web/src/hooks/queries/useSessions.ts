@@ -1,8 +1,42 @@
-import { useQuery } from '@tanstack/react-query'
+import { useCallback } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ApiClient } from '@/api/client'
-import type { SessionSummary } from '@/types/api'
+import type { SessionsResponse, SessionSummary } from '@/types/api'
 import { queryKeys } from '@/lib/query-keys'
 import { getActiveWorkspaceUserId, useActiveWorkspaceUserId } from '@/lib/activeWorkspaceUser'
+
+function sessionsQueryOptions(api: ApiClient | null) {
+    return {
+        queryKey: queryKeys.sessions,
+        queryFn: async () => {
+            if (!api) {
+                throw new Error('API unavailable')
+            }
+            // Read at request time rather than closing over the rendered value.
+            // Switching user resets this query synchronously, before React has
+            // re-rendered it, so a captured id would still be the old one and
+            // the refetch would faithfully re-fetch the previous person's
+            // sessions — the list stays put and the filter looks broken.
+            return await api.getSessions({ workspaceUserId: getActiveWorkspaceUserId() })
+        },
+        enabled: Boolean(api),
+    }
+}
+
+/**
+ * The session list for code that only reads it on demand (mention search,
+ * mention tooltips). It keeps the query alive but never re-renders the caller:
+ * any session's thinking/updatedAt change rewrites this list, and the chat
+ * screen re-rendering on every one of them is what made it stutter.
+ */
+export function useSessionsReader(api: ApiClient | null): () => SessionSummary[] {
+    const queryClient = useQueryClient()
+    useQuery({ ...sessionsQueryOptions(api), notifyOnChangeProps: [] })
+    return useCallback(
+        () => queryClient.getQueryData<SessionsResponse>(queryKeys.sessions)?.sessions ?? [],
+        [queryClient]
+    )
+}
 
 export function useSessions(api: ApiClient | null): {
     sessions: SessionSummary[]
@@ -18,21 +52,7 @@ export function useSessions(api: ApiClient | null): {
     // and a per-user key would leave every one of them writing into a cache
     // nobody reads. Switching user resets the entry instead; see
     // `useSwitchWorkspaceUser`.
-    const query = useQuery({
-        queryKey: queryKeys.sessions,
-        queryFn: async () => {
-            if (!api) {
-                throw new Error('API unavailable')
-            }
-            // Read at request time rather than closing over the rendered value.
-            // Switching user resets this query synchronously, before React has
-            // re-rendered it, so a captured id would still be the old one and
-            // the refetch would faithfully re-fetch the previous person's
-            // sessions — the list stays put and the filter looks broken.
-            return await api.getSessions({ workspaceUserId: getActiveWorkspaceUserId() })
-        },
-        enabled: Boolean(api),
-    })
+    const query = useQuery(sessionsQueryOptions(api))
 
     return {
         sessions: query.data?.sessions ?? [],

@@ -40,7 +40,7 @@ import { HappyThread } from '@/components/AssistantChat/HappyThread'
 import { QueuedMessagesBar } from '@/components/AssistantChat/QueuedMessagesBar'
 import { ScratchlistDrawer } from '@/components/AssistantChat/ScratchlistPanel'
 import { useHubScratchlist } from '@/lib/use-hub-scratchlist'
-import { useSessions } from '@/hooks/queries/useSessions'
+import { useSessionsReader } from '@/hooks/queries/useSessions'
 import { getSessionTitle } from '@/lib/sessionTitle'
 import { formatSessionMentionTooltip } from '@/lib/sessionReference'
 import { classifySessionAttention, getSessionAttentionLabelKey } from '@/lib/sessionAttention'
@@ -650,9 +650,9 @@ function SessionChatInner(props: SessionChatProps) {
     const enqueueCursorModelApply = useMemo(() => createSerialAsyncQueue(), [])
     const lastSyncedCursorModelRef = useRef<string | null | undefined>(undefined)
     const scratchlist = useHubScratchlist(props.session.id, props.api)
-    const { sessions: allSessions } = useSessions(props.api)
+    const readAllSessions = useSessionsReader(props.api)
     const resolveSessionMentionTooltip = useCallback((id: string, title: string) => {
-        const hit = allSessions.find((s) => s.id === id) ?? null
+        const hit = readAllSessions().find((s) => s.id === id) ?? null
         if (!hit) {
             return {
                 model: formatSessionMentionTooltip(null, title, id),
@@ -684,7 +684,7 @@ function SessionChatInner(props: SessionChatProps) {
             ),
             session: hit,
         }
-    }, [allSessions, t])
+    }, [readAllSessions, t])
     const [scratchlistMode, setScratchlistMode] = useState(false)
     const [isScratchlistParking, setIsScratchlistParking] = useState(false)
     // Mode resets across sessions implicitly: SessionChat is keyed by

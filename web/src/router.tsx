@@ -33,7 +33,7 @@ import { useMachines } from '@/hooks/queries/useMachines'
 import { useMachineLabels } from '@/hooks/useMachineLabels'
 import { useSession } from '@/hooks/queries/useSession'
 import { useCursorChatStoreStatus } from '@/hooks/queries/useCursorChatStoreStatus'
-import { useSessions } from '@/hooks/queries/useSessions'
+import { useSessions, useSessionsReader } from '@/hooks/queries/useSessions'
 import { useTasks } from '@/hooks/queries/useTasks'
 import { useSlashCommands } from '@/hooks/queries/useSlashCommands'
 import { useSkills } from '@/hooks/queries/useSkills'
@@ -632,7 +632,7 @@ function SessionPage() {
         getSuggestions: getSkillSuggestions,
     } = useSkills(api, sessionId)
     // Mention pool is stricter than sidebar (#1506): titled sessions only; match via sessionMatchesQuery.
-    const { sessions: allSessions } = useSessions(api)
+    const readAllSessions = useSessionsReader(api)
     const { machines: mentionMachines } = useMachines(api, true)
     const mentionMachineLabelsById = useMachineLabels(mentionMachines)
     // Same fallbacks as share picker / SessionList search.
@@ -652,7 +652,7 @@ function SessionPage() {
             // v1: plain-text expansion (same grammar as Copy reference) — #1213.
             // v2: segmented rich composer with inline session tokens — #1215.
             // Match via sessionMatchesQuery (share/sidebar); label/insert via getSessionTitle.
-            const sessionHits = matchSessionsForMention(allSessions, search, {
+            const sessionHits = matchSessionsForMention(readAllSessions(), search, {
                 excludeId: sessionId,
                 limit: 20,
                 resolveMachineLabel: resolveMentionMachineLabel,
@@ -701,7 +701,7 @@ function SessionPage() {
         agentType,
         api,
         sessionId,
-        allSessions,
+        readAllSessions,
         resolveMentionMachineLabel,
         getSkillSuggestions,
         getSlashSuggestions,
