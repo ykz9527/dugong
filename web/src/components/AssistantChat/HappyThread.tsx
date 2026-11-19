@@ -10,6 +10,7 @@ import { getConversationMessageAnchorId } from '@/chat/outline'
 import { formatMessageTimestampTitle, formatOutlineTimestamp } from '@/chat/presentation'
 import {
     HappyChatProvider,
+    type HappyChatContextValue,
     type OlderHistoryLoadResult
 } from '@/components/AssistantChat/context'
 import { HappyAssistantMessage } from '@/components/AssistantChat/messages/AssistantMessage'
@@ -1746,30 +1747,54 @@ export function HappyThread(props: {
         })
     }, [props.session])
 
+    const chatContextValue = useMemo<HappyChatContextValue>(() => ({
+                api: props.api,
+                sessionId: props.sessionId,
+                metadata: props.metadata,
+                terminalToolDisplayMode,
+                permissionMode: props.session.permissionMode,
+                activePermissionMode: props.session.activePermissionMode,
+                showSessionSummaryInChat,
+                disabled: props.disabled,
+                onRefresh: props.onRefresh,
+                onRetryMessage: props.onRetryMessage,
+                historyActionPending: props.historyActionPending,
+                onForkConversation: props.onForkConversation,
+                onRewindConversation: props.onRewindConversation,
+                isLatestCompletedBoundary: props.isLatestCompletedBoundary,
+                onShareTurn: handleShareTurn,
+                hasMoreMessages: props.hasMoreMessages,
+                isSyncingTail: props.isSyncingTail,
+                isLoadingMoreMessages: props.isLoadingMoreMessages,
+                onNestedScrollFollowChange: handleNestedScrollFollowChange,
+                loadOlderMessagesPreservingScroll: loadOlderFromConsumer,
+                onRunInTerminal: props.onRunInTerminal
+    }), [
+        props.api,
+        props.sessionId,
+        props.metadata,
+        terminalToolDisplayMode,
+        props.session.permissionMode,
+        props.session.activePermissionMode,
+        showSessionSummaryInChat,
+        props.disabled,
+        props.onRefresh,
+        props.onRetryMessage,
+        props.historyActionPending,
+        props.onForkConversation,
+        props.onRewindConversation,
+        props.isLatestCompletedBoundary,
+        handleShareTurn,
+        props.hasMoreMessages,
+        props.isSyncingTail,
+        props.isLoadingMoreMessages,
+        handleNestedScrollFollowChange,
+        loadOlderFromConsumer,
+        props.onRunInTerminal,
+    ])
+
     return (
-        <HappyChatProvider value={{
-            api: props.api,
-            sessionId: props.sessionId,
-            metadata: props.metadata,
-            terminalToolDisplayMode,
-            permissionMode: props.session.permissionMode,
-            activePermissionMode: props.session.activePermissionMode,
-            showSessionSummaryInChat,
-            disabled: props.disabled,
-            onRefresh: props.onRefresh,
-            onRetryMessage: props.onRetryMessage,
-            historyActionPending: props.historyActionPending,
-            onForkConversation: props.onForkConversation,
-            onRewindConversation: props.onRewindConversation,
-            isLatestCompletedBoundary: props.isLatestCompletedBoundary,
-            onShareTurn: handleShareTurn,
-            hasMoreMessages: props.hasMoreMessages,
-            isSyncingTail: props.isSyncingTail,
-            isLoadingMoreMessages: props.isLoadingMoreMessages,
-            onNestedScrollFollowChange: handleNestedScrollFollowChange,
-            loadOlderMessagesPreservingScroll: loadOlderFromConsumer,
-            onRunInTerminal: props.onRunInTerminal
-        }}>
+        <HappyChatProvider value={chatContextValue}>
             <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col relative">
                 {!props.isSyncingTail && (
                     props.isLoadingMoreMessages || pullToLoadState !== 'idle'

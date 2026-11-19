@@ -1,7 +1,7 @@
 import '@assistant-ui/react-markdown/styles/dot.css'
 
 import type { ComponentPropsWithoutRef, ComponentType, MouseEvent, ReactNode } from 'react'
-import { useState, useCallback, useEffect, useMemo, createContext, useContext } from 'react'
+import { useState, useCallback, useEffect, useMemo, createContext, useContext, memo } from 'react'
 import {
     MarkdownTextPrimitive,
     unstable_memoizeMarkdownComponents as memoizeMarkdownComponents,
@@ -877,7 +877,10 @@ export const defaultComponents: DefaultComponentsMap = memoizeMarkdownComponents
     img: Image,
 } as const) as unknown as DefaultComponentsMap
 
-export function MarkdownText({ smooth }: { smooth?: boolean } = {}) {
+// Memoized: the primitive re-parses the whole message (gfm, math, katex and
+// the custom remark plugins) on every render, and it subscribes to its own
+// text part, so a parent re-render with the same `smooth` has nothing to do.
+export const MarkdownText = memo(function MarkdownText({ smooth }: { smooth?: boolean } = {}) {
     return (
         <UriConfirmProvider>
             <MarkdownTextPrimitive
@@ -891,4 +894,4 @@ export function MarkdownText({ smooth }: { smooth?: boolean } = {}) {
             />
         </UriConfirmProvider>
     )
-}
+})
