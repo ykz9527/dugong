@@ -74,7 +74,7 @@ cd web && bun run dev                                                 # 网页�
 
 ## 两分钟看完
 
-https://github.com/user-attachments/assets/16b3bc48-5c81-40bb-ac22-ff87e299f7b1
+https://github.com/user-attachments/assets/de2d44ee-fe37-4f9d-bcdc-25b4480315af
 
 ## 怎么用
 
@@ -143,7 +143,7 @@ hub 提供网页，存任务和对话，负责把任务在状态之间挪。每�
 
 ## 和其他工具比
 
-https://github.com/user-attachments/assets/d50bacc0-a6df-49e7-9884-063c125fa4d1
+https://github.com/user-attachments/assets/79458a0d-4736-47c5-9ff2-51736beefd2a
 
 大多数并行跑 agent 的工具，是装在你面前这台机器上的桌面应用或终端，每个任务给一个 worktree。worktree 这点 dugong 也有。不同的地方在于：它是一个服务，任何浏览器都能打开，笔记本上和手机上是同一张任务清单；手机上能看到所有 agent 的所有会话，有通知；任务状态跟着 agent 的每一轮走，不看进程；另外还有助手。
 

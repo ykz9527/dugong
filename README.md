@@ -74,7 +74,7 @@ cd web && bun run dev                                                 # web on :
 
 ## A two-minute tour
 
-https://github.com/user-attachments/assets/f2dc10dd-7304-4cfe-955b-166ad8407894
+https://github.com/user-attachments/assets/44f0bdd7-18c5-4d26-bc98-e59ff4dfccdf
 
 ## How it works
 
@@ -143,7 +143,7 @@ The hub serves the web app, stores tasks and chats, and moves tasks between stat
 
 ## Compared with other tools
 
-https://github.com/user-attachments/assets/77e49ee8-a66d-4fda-b160-070871cb35d4
+https://github.com/user-attachments/assets/b21e3f03-8393-4b05-a486-35fc53c64e0b
 
 Most tools for running agents side by side are a desktop app or a terminal on the machine in front of you, with a worktree per task. dugong has the worktrees too. It differs in being a server you open from any browser, so your laptop and your phone show the same task list; in putting every session from every agent on your phone, with notifications; in following the agent's turns instead of its process; and in the assistant.
 
