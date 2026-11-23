@@ -35,7 +35,7 @@ import type { WebAppEnv } from '../middleware/auth'
 import { loadScratchlistAttachmentLimitsFromEnv } from '../../config/scratchlistAttachmentLimits'
 import { validateScratchlistAttachmentsForWrite, scratchlistSessionBytesBeforeForPut } from '../../scratchlistAttachments/validate'
 import { TitleSuggestionError } from '../../sync/titleSuggestion'
-import { RpcTargetMissingError } from '../../sync/rpcGateway'
+import { RpcTargetMissingError, SideQuestionFailedError } from '../../sync/rpcGateway'
 import { requireSessionFromParam, requireSyncEngine } from './guards'
 import { resolveWorkspaceScope, sessionInScope } from './workspaceScope'
 
@@ -449,7 +449,10 @@ export function createSessionsRoutes(
                     code: 'side_question_unsupported'
                 }, 409)
             }
-            return c.json({ error: error instanceof Error ? error.message : 'Side question failed' }, 502)
+            return c.json({
+                error: error instanceof Error ? error.message : 'Side question failed',
+                ...(error instanceof SideQuestionFailedError && error.code ? { code: error.code } : {})
+            }, 502)
         }
     })
 

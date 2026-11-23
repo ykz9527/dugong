@@ -705,6 +705,8 @@ export default {
   'sideQuestion.usage': 'Usage: /btw <question>',
   'sideQuestion.footnote': 'Side question — answered from a fork of this conversation, not added to it.',
   'sideQuestion.restartRequired': 'This session was started before /btw support. Restart the session to use /btw.',
+  'sideQuestion.noAnswer': '/btw came back without an answer. Please try again.',
+  'sideQuestion.timedOut': '/btw took too long to answer. Please try again.',
   'fue.newFeatureDot': 'New feature available',
   'fue.gotIt': 'Got it',
   'fue.closeAriaLabel': 'Close explainer',

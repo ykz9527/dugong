@@ -667,6 +667,12 @@ export type SideQuestionResponse = {
     answer: string
 }
 
+/** Why a /btw fork came back without an answer; the web shows a matching message. */
+export type SideQuestionFailureCode = 'side_question_no_answer' | 'side_question_timeout'
+
+/** CLI → hub RPC result for /btw. */
+export type SideQuestionRpcResult = SideQuestionResponse | { error: string; code: SideQuestionFailureCode }
+
 /** CLI → hub RPC result for native fork (before HAPI child binding). */
 export type ForkConversationRpcResult = {
     nativeSessionId: string

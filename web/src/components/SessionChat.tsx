@@ -568,6 +568,8 @@ export function SessionChat(props: SessionChatProps) {
 function describeSideQuestionError(error: unknown, t: (key: string) => string): string {
     if (error instanceof ApiError) {
         if (error.code === 'side_question_unsupported') return t('sideQuestion.restartRequired')
+        if (error.code === 'side_question_no_answer') return t('sideQuestion.noAnswer')
+        if (error.code === 'side_question_timeout') return t('sideQuestion.timedOut')
         try {
             const parsed = JSON.parse(error.body ?? '') as { error?: unknown }
             if (typeof parsed.error === 'string') return parsed.error

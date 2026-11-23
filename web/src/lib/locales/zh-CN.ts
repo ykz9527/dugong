@@ -709,6 +709,8 @@ export default {
   'sideQuestion.usage': '用法：/btw <问题>',
   'sideQuestion.footnote': '旁支提问 —— 基于当前对话的分叉回答，不会写入对话。',
   'sideQuestion.restartRequired': '这个会话是在支持 /btw 之前启动的，重启会话后才能使用 /btw。',
+  'sideQuestion.noAnswer': '这次 /btw 没拿到回答，请重试。',
+  'sideQuestion.timedOut': '/btw 等了太久没有回答，请重试。',
   'fue.newFeatureDot': '新功能可用',
   'fue.gotIt': '知道了',
   'fue.closeAriaLabel': '关闭说明',

@@ -29,8 +29,8 @@ import {
     toConversationHistoryCapabilities
 } from '@hapi/protocol/conversationHistory';
 import { listSkills, type SkillSummary } from '@/modules/common/skills';
-import { askClaudeSideQuestion } from './sideQuestion';
-import { SideQuestionRequestSchema } from '@hapi/protocol/apiTypes';
+import { askClaudeSideQuestion, SideQuestionError } from './sideQuestion';
+import { SideQuestionRequestSchema, type SideQuestionRpcResult } from '@hapi/protocol/apiTypes';
 import { prependTaskContext, setAssistantRole, type AssistantRole } from './assistantRole';
 import { ASSISTANT_CONFIRM_TOOLS, toAssistantToolId } from '@hapi/protocol';
 
@@ -284,14 +284,22 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         if (options.claudeEnvVars) {
             Object.assign(process.env, options.claudeEnvVars)
         }
-        const answer = await askClaudeSideQuestion({
-            nativeSessionId: requireNativeSessionId(),
-            question: parsed.data.question,
-            cwd: workingDirectory,
-            model: currentModel ?? undefined,
-            claudeArgs: options.claudeArgs
-        })
-        return { answer }
+        try {
+            const answer = await askClaudeSideQuestion({
+                nativeSessionId: requireNativeSessionId(),
+                question: parsed.data.question,
+                cwd: workingDirectory,
+                model: currentModel ?? undefined,
+                claudeArgs: options.claudeArgs
+            })
+            return { answer } satisfies SideQuestionRpcResult
+        } catch (error) {
+            // Carry the reason as a code so the web can say what happened.
+            if (error instanceof SideQuestionError) {
+                return { error: error.message, code: error.code } satisfies SideQuestionRpcResult
+            }
+            throw error
+        }
     })
     session.rpcHandlerManager.registerHandler(RPC_METHODS.RewindConversation, async () => {
         throw new Error('Rewind is not supported for Claude')

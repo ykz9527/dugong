@@ -4,6 +4,7 @@ import type { Session, SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { Store } from '../../store'
 import { createSessionsRoutes } from './sessions'
+import { SideQuestionFailedError } from '../../sync/rpcGateway'
 
 function createSession(overrides?: Partial<Session>): Session {
     const baseMetadata = {
@@ -68,6 +69,7 @@ function createApp(session: Session, opts?: {
     listCodexModelsForSession?: SyncEngine['listCodexModelsForSession']
     forkConversation?: SyncEngine['forkConversation']
     rewindConversation?: SyncEngine['rewindConversation']
+    askSideQuestion?: SyncEngine['askSideQuestion']
     suggestSessionTitle?: SyncEngine['suggestSessionTitle']
     updateSessionSummary?: SyncEngine['updateSessionSummary']
     setSessionPinned?: (sessionId: string, pinned: boolean) => void
@@ -164,6 +166,7 @@ function createApp(session: Session, opts?: {
         })),
         forkConversation: opts?.forkConversation ?? (async () => ({ type: 'success', sessionId: 'child-1' })),
         rewindConversation: opts?.rewindConversation ?? (async () => ({ type: 'success' })),
+        askSideQuestion: opts?.askSideQuestion ?? (async () => ({ answer: 'ok' })),
         suggestSessionTitle: opts?.suggestSessionTitle ?? (async () => 'Generated title'),
         updateSessionSummary: opts?.updateSessionSummary ?? (async () => {})
     } as Partial<SyncEngine>
@@ -1463,6 +1466,29 @@ describe('sessions routes', () => {
         expect(response.status).toBe(200)
         expect(await response.json()).toEqual({ sessionId: 'forked-child' })
         expect(calls).toEqual([{ sessionId: 'session-1', namespace: 'default', messageLocalId: undefined }])
+    })
+
+    it('passes the no-answer code of a failed /btw on to the web', async () => {
+        const session = createSession({
+            metadata: { path: '/tmp/project', host: 'localhost', flavor: 'claude' }
+        })
+        const { app } = createApp(session, {
+            askSideQuestion: async () => {
+                throw new SideQuestionFailedError('Claude returned no answer (error_max_turns, tool_use)', 'side_question_no_answer')
+            }
+        })
+
+        const response = await app.request('/api/sessions/session-1/btw', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ question: 'How far along?' })
+        })
+
+        expect(response.status).toBe(502)
+        expect(await response.json()).toEqual({
+            error: 'Claude returned no answer (error_max_turns, tool_use)',
+            code: 'side_question_no_answer'
+        })
     })
 
     it('rewinds via POST /sessions/:id/rewind', async () => {

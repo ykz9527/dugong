@@ -6,7 +6,8 @@ import {
     ListClaudeSessionsRpcResponseSchema,
     ListCodexSessionsRpcResponseSchema,
     ListPiSessionsRpcResponseSchema,
-    RemoveWorktreeResponseSchema
+    RemoveWorktreeResponseSchema,
+    type SideQuestionFailureCode
 } from '@hapi/protocol/apiTypes'
 import type {
     AgyModelsResponse,
@@ -74,6 +75,16 @@ export class RpcTargetMissingError extends Error {
         this.method = method
     }
 }
+
+/** The CLI ran the /btw fork but got no answer; `code` says why, when known. */
+export class SideQuestionFailedError extends Error {
+    constructor(message: string, readonly code?: SideQuestionFailureCode) {
+        super(message)
+        this.name = 'SideQuestionFailedError'
+    }
+}
+
+const SIDE_QUESTION_FAILURE_CODES: readonly string[] = ['side_question_no_answer', 'side_question_timeout'] satisfies SideQuestionFailureCode[]
 
 export type RpcCommandResponse = CommandResponse
 export type FileSearchOptions = {
@@ -543,11 +554,14 @@ export class RpcGateway {
             RPC_METHODS.SideQuestion,
             { question },
             180_000
-        ) as { answer?: unknown; error?: unknown }
-        // The CLI reports a failed handler as `{ error }`; pass its reason on
-        // rather than hiding it behind a generic message.
+        ) as { answer?: unknown; error?: unknown; code?: unknown }
+        // The CLI reports a failed handler as `{ error }`, plus a `code` when
+        // the fork ran but gave no answer; pass both on.
         if (typeof result?.error === 'string' && result.error) {
-            throw new Error(result.error)
+            const code = typeof result.code === 'string' && SIDE_QUESTION_FAILURE_CODES.includes(result.code)
+                ? result.code as SideQuestionFailureCode
+                : undefined
+            throw new SideQuestionFailedError(result.error, code)
         }
         if (typeof result?.answer !== 'string') {
             throw new Error('Unexpected side question response')
