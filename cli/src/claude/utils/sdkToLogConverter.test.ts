@@ -348,17 +348,33 @@ describe('SDKToLogConverter', () => {
             expect(assistantLog?.message?.usage?.context_window).toBe(1_000_000)
         })
 
-        it('infers 200k contextWindow when [1m] suffix is absent', () => {
+        it('infers 200k contextWindow for a pre-5 model when [1m] suffix is absent', () => {
             const initMsg: SDKSystemMessage = {
                 type: 'system',
                 subtype: 'init',
                 session_id: 'session-2',
-                model: 'claude-sonnet-5'
+                model: 'claude-sonnet-4-6'
             }
             converter.convert(initMsg)
 
             const assistantLog = converter.convert(makeAssistantMessage()) as any
             expect(assistantLog?.message?.usage?.context_window).toBe(200_000)
+        })
+
+        it('seeds 1M for a bare current-generation id before any result (resumed Opus 5.5 turn)', () => {
+            // A resumed session builds a fresh converter: init arrives as the bare
+            // "claude-opus-5-5" with no selectedModel. Its real window is 1M (the SDK
+            // result reports modelUsage["claude-opus-5-5"].contextWindow = 1,000,000);
+            // seeding 200k made the whole first turn read >100% in the web status bar.
+            converter.convert({
+                type: 'system',
+                subtype: 'init',
+                session_id: 'session-2b',
+                model: 'claude-opus-5-5'
+            } as SDKSystemMessage)
+
+            const assistantLog = converter.convert(makeAssistantMessage()) as any
+            expect(assistantLog?.message?.usage?.context_window).toBe(1_000_000)
         })
 
         it('refines contextWindow from result.modelUsage and applies to later assistants', () => {
@@ -514,14 +530,14 @@ describe('SDKToLogConverter', () => {
                 type: 'system',
                 subtype: 'init',
                 session_id: 'session-6',
-                model: 'claude-sonnet-5'
+                model: 'claude-sonnet-4-6'
             } as SDKSystemMessage)
 
             const afterSwitch = converter.convert({
                 type: 'assistant',
                 message: {
                     role: 'assistant',
-                    model: 'claude-sonnet-5',
+                    model: 'claude-sonnet-4-6',
                     content: [{ type: 'text', text: 'hi' }],
                     usage: { input_tokens: 10, output_tokens: 20 }
                 }
@@ -566,22 +582,22 @@ describe('SDKToLogConverter', () => {
             // Bare init model + no selectedModel hint: neither signal says "1M", so we can't
             // know the real window on turn 1 and seed 200k conservatively rather than
             // guessing high. The authoritative value arrives with the first result. (A real
-            // 1M account whose init keeps the suffix, e.g. "claude-opus-4-8[1m]", or that
-            // carries a selectedModel hint, seeds 1M immediately instead — covered above.)
+            // 1M account whose init keeps the suffix, e.g. "claude-opus-4-8[1m]", one that
+            // carries a selectedModel hint, or any current-generation id seeds 1M immediately.)
             const defaultConverter = new SDKToLogConverter({ ...context } as any)
 
             defaultConverter.convert({
                 type: 'system',
                 subtype: 'init',
                 session_id: 'session-8',
-                model: 'claude-fable-5'
+                model: 'claude-sonnet-4-6'
             } as SDKSystemMessage)
 
             const turn1 = defaultConverter.convert({
                 type: 'assistant',
                 message: {
                     role: 'assistant',
-                    model: 'claude-fable-5',
+                    model: 'claude-sonnet-4-6',
                     content: [{ type: 'text', text: 'hi' }],
                     usage: { input_tokens: 10, output_tokens: 20 }
                 }
@@ -599,13 +615,13 @@ describe('SDKToLogConverter', () => {
                 type: 'system',
                 subtype: 'init',
                 session_id: 'session-9',
-                model: 'claude-sonnet-5'
+                model: 'claude-sonnet-4-6'
             } as SDKSystemMessage)
             const beforeSwitch = liveConverter.convert({
                 type: 'assistant',
                 message: {
                     role: 'assistant',
-                    model: 'claude-sonnet-5',
+                    model: 'claude-sonnet-4-6',
                     content: [{ type: 'text', text: 'hi' }],
                     usage: { input_tokens: 10, output_tokens: 20 }
                 }
@@ -669,13 +685,13 @@ describe('SDKToLogConverter', () => {
                 type: 'system',
                 subtype: 'init',
                 session_id: 'session-10',
-                model: 'claude-sonnet-5'
+                model: 'claude-sonnet-4-6'
             } as SDKSystemMessage)
             const afterSwitch = liveConverter.convert({
                 type: 'assistant',
                 message: {
                     role: 'assistant',
-                    model: 'claude-sonnet-5',
+                    model: 'claude-sonnet-4-6',
                     content: [{ type: 'text', text: 'hi' }],
                     usage: { input_tokens: 10, output_tokens: 20 }
                 }
@@ -852,9 +868,21 @@ describe('SDKToLogConverter', () => {
             } as any) as any
             expect(t1?.message?.usage?.context_window).toBe(1_000_000)
 
-            // Switch to plain fable (200k): must re-seed 200k, NOT keep the stale 1M.
+            // Switch to plain fable. Fable is 1M under its bare id too, so it seeds 1M; a
+            // tier that reports a smaller window for plain fable is learned from its result
+            // and must land on the bare key only.
             conv.updateSelectedModel('fable')
             conv.convert({ type: 'system', subtype: 'init', session_id: 's', model: 'claude-fable-5' } as SDKSystemMessage)
+            const t2seed = conv.convert({
+                type: 'assistant',
+                message: { role: 'assistant', model: 'claude-fable-5', content: [{ type: 'text', text: 'b0' }], usage: { input_tokens: 10, output_tokens: 20 } }
+            } as any) as any
+            expect(t2seed?.message?.usage?.context_window).toBe(1_000_000)
+            conv.convert({
+                type: 'result', subtype: 'success', num_turns: 1, total_cost_usd: 0,
+                duration_ms: 1, duration_api_ms: 1, is_error: false, session_id: 's',
+                modelUsage: { 'claude-fable-5': { contextWindow: 200_000 } }
+            } as SDKResultMessage)
             const t2 = conv.convert({
                 type: 'assistant',
                 message: { role: 'assistant', model: 'claude-fable-5', content: [{ type: 'text', text: 'b' }], usage: { input_tokens: 10, output_tokens: 20 } }

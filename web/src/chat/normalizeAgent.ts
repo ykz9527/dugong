@@ -68,7 +68,8 @@ function normalizeRoundSummary(value: unknown): RoundSummary | undefined {
                 inputTokens: nonNegativeSafeInteger(rawUsage.inputTokens),
                 outputTokens: nonNegativeSafeInteger(rawUsage.outputTokens),
                 cacheReadInputTokens: nonNegativeSafeInteger(rawUsage.cacheReadInputTokens),
-                cacheCreationInputTokens: nonNegativeSafeInteger(rawUsage.cacheCreationInputTokens)
+                cacheCreationInputTokens: nonNegativeSafeInteger(rawUsage.cacheCreationInputTokens),
+                contextWindow: nonNegativeSafeInteger(rawUsage.contextWindow) || undefined
             }
             parsedModelUsage.push([model, usage])
         }
@@ -326,7 +327,11 @@ function normalizeAssistantOutput(
         }
     }
 
-    const usage = isObject(message.usage) ? (message.usage as Record<string, unknown>) : null
+    // Claude Code writes a local `<synthetic>` assistant message when a request
+    // fails (isApiErrorMessage). Its usage is all zeros: it says nothing about
+    // the context, and taking it as the latest reading empties the status bar.
+    const isSyntheticError = data.isApiErrorMessage === true || message.model === '<synthetic>'
+    const usage = !isSyntheticError && isObject(message.usage) ? (message.usage as Record<string, unknown>) : null
     const inputTokens = usage ? asNumber(usage.input_tokens) : null
     const outputTokens = usage ? asNumber(usage.output_tokens) : null
     const model = asString(message.model) ?? null

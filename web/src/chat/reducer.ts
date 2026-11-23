@@ -1,5 +1,5 @@
 import type { AgentState } from '@/types/api'
-import type { AgentEvent, ChatBlock, NormalizedMessage, UsageData } from '@/chat/types'
+import type { AgentEvent, ChatBlock, NormalizedMessage, RoundSummary, UsageData } from '@/chat/types'
 import type { ThreadGoal } from '@/types/api'
 import { traceMessages, type TracedMessage } from '@/chat/tracer'
 import { dedupeAgentEvents, foldApiErrorEvents } from '@/chat/reducerEvents'
@@ -28,6 +28,52 @@ function calculateContextSize(usage: UsageData): number {
 function isUsageVisibleInParentContext(msg: NormalizedMessage): boolean {
     if (msg.isSidechain) return false
     return msg.usage?.scope_role !== 'child'
+}
+
+/**
+ * The context window the SDK last reported for `model` in a turn result
+ * (`modelUsage[model].contextWindow`). That figure is ground truth, while the
+ * `context_window` stamped on assistant usage can be the CLI's guess from
+ * before the first result of a process (it guessed 200k for every bare
+ * current-generation id, which made a resumed Opus 5.5 turn read >100%).
+ */
+function getReportedContextWindow(normalized: NormalizedMessage[], model: string | null): number | null {
+    if (!model) return null
+    for (let i = normalized.length - 1; i >= 0; i--) {
+        const msg = normalized[i]
+        if (msg.role !== 'event' || msg.content.type !== 'turn-summary') continue
+        const window = (msg.content.summary as RoundSummary).modelUsage[model]?.contextWindow
+        if (window) return window
+    }
+    return null
+}
+
+function getLatestUsage(normalized: NormalizedMessage[]): LatestUsage | null {
+    for (let i = normalized.length - 1; i >= 0; i--) {
+        const msg = normalized[i]
+        if (!msg.usage || !isUsageVisibleInParentContext(msg)) continue
+        const contextSize = calculateContextSize(msg.usage)
+        // A reading with nothing in context is never real (a failed request,
+        // an aborted turn); keep the last real one instead of showing empty.
+        if (contextSize <= 0) continue
+        const model = msg.model ?? null
+        // A context larger than the window it claims proves the window wrong
+        // (stored turns from CLIs that seeded 200k for 1M models); drop it so
+        // the status bar falls back to the model table.
+        const stampedWindow = msg.usage.context_window
+        const usageWindow = stampedWindow && stampedWindow >= contextSize ? stampedWindow : null
+        return {
+            inputTokens: msg.usage.input_tokens,
+            outputTokens: msg.usage.output_tokens,
+            cacheCreation: msg.usage.cache_creation_input_tokens ?? 0,
+            cacheRead: msg.usage.cache_read_input_tokens ?? 0,
+            contextSize,
+            contextWindow: getReportedContextWindow(normalized, model) ?? usageWindow,
+            model,
+            timestamp: msg.createdAt
+        }
+    }
+    return null
 }
 
 export type LatestUsage = {
@@ -174,24 +220,7 @@ export function reduceChatBlocks(
         })
     }
 
-    // Calculate latest usage from messages (find the most recent message with usage data)
-    let latestUsage: LatestUsage | null = null
-    for (let i = normalized.length - 1; i >= 0; i--) {
-        const msg = normalized[i]
-        if (msg.usage && isUsageVisibleInParentContext(msg)) {
-            latestUsage = {
-                inputTokens: msg.usage.input_tokens,
-                outputTokens: msg.usage.output_tokens,
-                cacheCreation: msg.usage.cache_creation_input_tokens ?? 0,
-                cacheRead: msg.usage.cache_read_input_tokens ?? 0,
-                contextSize: calculateContextSize(msg.usage),
-                contextWindow: msg.usage.context_window ?? null,
-                model: msg.model ?? null,
-                timestamp: msg.createdAt
-            }
-            break
-        }
-    }
+    const latestUsage = getLatestUsage(normalized)
 
     return {
         blocks: filterSilentGoalBlocks(dedupeAgentEvents(foldApiErrorEvents(rootResult.blocks))),

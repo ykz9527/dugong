@@ -32,7 +32,7 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 
 beforeEach(() => {
     session = {
-        id: 's-assistant', namespace: 'default', active: true, model: 'opus', backgroundTaskCount: 0,
+        id: 's-assistant', namespace: 'default', active: true, model: 'claude-sonnet-4-6', backgroundTaskCount: 0,
         metadata: { path: '/a', host: 'h', role: 'assistant', workspaceUserId: 'wu' }
     } as unknown as Session
     sent = []
@@ -158,7 +158,37 @@ describe('AssistantCompaction', () => {
     })
 
     it('knows the long-context model has a bigger window', () => {
-        expect(contextWindowFor('opus')).toBe(200_000)
+        expect(contextWindowFor('claude-sonnet-4-6')).toBe(200_000)
         expect(contextWindowFor('opus[1m]')).toBe(1_000_000)
+        // Current-generation models are 1M under their bare ids too.
+        expect(contextWindowFor('opus')).toBe(1_000_000)
+        expect(contextWindowFor('claude-opus-5-5')).toBe(1_000_000)
+        expect(contextWindowFor(null)).toBe(200_000)
+    })
+
+    it('does not compact an Opus 5.5 assistant at 150k before any result arrives', async () => {
+        session = { ...session, model: 'claude-opus-5-5' } as Session
+        compaction.handle(usage(150_000))
+        compaction.handle(ready())
+        await flush()
+        expect(sent).toHaveLength(0)
+    })
+
+    it('keeps the last reading when a failed request reports all-zero usage', async () => {
+        compaction.handle(usage(150_000))
+        compaction.handle({
+            type: 'message-received',
+            sessionId: session.id,
+            message: {
+                id: 'api-error', seq: 3, localId: null, createdAt: 0,
+                content: { role: 'agent', content: { type: 'output', data: { type: 'assistant', isApiErrorMessage: true, message: { model: '<synthetic>', usage: {
+                    input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0
+                } } } } }
+            }
+        } as unknown as SyncEvent)
+        compaction.handle(ready())
+        await flush()
+        expect(sent).toHaveLength(1)
+        expect(sent[0].text).toContain('about 75%')
     })
 })

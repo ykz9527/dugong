@@ -217,6 +217,29 @@ describe('StatusBar context details popover', () => {
         expect(screen.queryByText('上下文详情')).toBeNull()
     })
 
+    it('sizes a Claude Opus 5.5 context against its 1M window when no explicit window is known', () => {
+        // Session be6fe992 ran at ~214k without compacting; the old 200k guess
+        // put it over 100% and in the danger color.
+        localStorage.setItem('hapi-lang', 'en')
+        render(
+            <I18nProvider>
+                <StatusBar
+                    active
+                    thinking={false}
+                    agentState={null}
+                    agentFlavor="claude"
+                    contextSize={214_000}
+                    contextWindow={null}
+                    contextModel="claude-opus-5-5"
+                />
+            </I18nProvider>
+        )
+
+        const trigger = screen.getByRole('button', { name: 'Context details' })
+        expect(trigger.textContent).toBe('ctx 990k (78% left)22% · 214k / 990k')
+        expect(trigger.className.split(' ')).toContain('text-[var(--app-hint)]')
+    })
+
     it('localizes the popover content without localizing the external left label', async () => {
         localStorage.setItem('hapi-lang', 'en')
         render(

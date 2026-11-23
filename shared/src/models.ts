@@ -63,3 +63,36 @@ export function getClaudeModelLabel(model: string): string | null {
 
     return CLAUDE_MODEL_LABELS[trimmedModel as ClaudeModelPreset] ?? null
 }
+
+/**
+ * Context window of a Claude model, for when no authoritative value is known.
+ *
+ * The authoritative source is the SDK result message
+ * (`modelUsage[<model>].contextWindow`); this is only the fallback before the
+ * first result of a process arrives, and for local transcripts that never
+ * carry one. Checked 2026-11-22 against SDK results (claude-opus-5-5,
+ * claude-sonnet-5-5, claude-haiku-5-5, claude-fable-5-1 all report 1,000,000)
+ * and the model table: every 5th-generation model, Fable and Mythos is 1M.
+ * Older ids stay at 200k unless they carry the `[1m]` suffix: Claude Code
+ * makes 1M opt-in for them (the opus[1m]/sonnet[1m] presets), and no SDK
+ * result here confirms otherwise — an authoritative value replaces this anyway.
+ *
+ * Returns null for ids that are not Claude models.
+ */
+export const CLAUDE_DEFAULT_CONTEXT_WINDOW_TOKENS = 200_000
+export const CLAUDE_LARGE_CONTEXT_WINDOW_TOKENS = 1_000_000
+
+// Bare aliases resolve to the current generation, which is 1M across the board.
+const CLAUDE_CURRENT_ALIASES = new Set(['opus', 'sonnet', 'haiku', 'fable'])
+
+export function getClaudeContextWindowTokens(model: string | null | undefined): number | null {
+    const id = model?.trim().toLowerCase()
+    if (!id) return null
+    if (id.endsWith('[1m]')) return CLAUDE_LARGE_CONTEXT_WINDOW_TOKENS
+    if (CLAUDE_CURRENT_ALIASES.has(id)) return CLAUDE_LARGE_CONTEXT_WINDOW_TOKENS
+    if (!id.startsWith('claude-')) return null
+    if (id.startsWith('claude-fable') || id.startsWith('claude-mythos')) return CLAUDE_LARGE_CONTEXT_WINDOW_TOKENS
+    const generation = id.match(/^claude-(?:opus|sonnet|haiku)-(\d+)/)?.[1]
+    if (generation && Number.parseInt(generation, 10) >= 5) return CLAUDE_LARGE_CONTEXT_WINDOW_TOKENS
+    return CLAUDE_DEFAULT_CONTEXT_WINDOW_TOKENS
+}

@@ -14,6 +14,7 @@ import type {
 } from '@/claude/sdk'
 import type { RawJSONLines } from '@/claude/types'
 import type { ClaudePermissionMode } from '@hapi/protocol/types'
+import { CLAUDE_DEFAULT_CONTEXT_WINDOW_TOKENS, CLAUDE_LARGE_CONTEXT_WINDOW_TOKENS, getClaudeContextWindowTokens } from '@hapi/protocol'
 import { logger } from '@/lib'
 
 /**
@@ -370,9 +371,16 @@ export class SDKToLogConverter {
                         // first result lands. Guarding/seeding on resolvedContextWindowKey
                         // (not the bare init id) is what forces a re-seed when switching
                         // fable[1m] <-> fable, whose bare ids would otherwise be identical.
-                        const seedIs1m = (this.context.selectedModel?.endsWith('[1m]') ?? false)
-                            || systemMsg.model.endsWith('[1m]')
-                        this.modelContextWindows.set(this.resolvedContextWindowKey, seedIs1m ? 1_000_000 : 200_000)
+                        // The init id alone used to decide this, so every bare
+                        // current-generation id (claude-opus-5-5, 1M) was seeded 200k
+                        // and a resumed session's first turn read >100% for as long as
+                        // it ran. Both inputs now go through the shared model table.
+                        const seed = this.context.selectedModel?.endsWith('[1m]')
+                            ? CLAUDE_LARGE_CONTEXT_WINDOW_TOKENS
+                            : getClaudeContextWindowTokens(systemMsg.model)
+                                ?? getClaudeContextWindowTokens(this.context.selectedModel)
+                                ?? CLAUDE_DEFAULT_CONTEXT_WINDOW_TOKENS
+                        this.modelContextWindows.set(this.resolvedContextWindowKey, seed)
                     }
                 }
 

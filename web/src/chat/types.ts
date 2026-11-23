@@ -19,6 +19,8 @@ export type RoundModelUsage = {
     outputTokens?: number
     cacheReadInputTokens?: number
     cacheCreationInputTokens?: number
+    /** The model's real context window, as the SDK result reports it. */
+    contextWindow?: number
 }
 
 export type RoundSummary = {

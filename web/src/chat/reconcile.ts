@@ -46,6 +46,7 @@ function areRoundModelUsagesEqual(left: RoundModelUsage, right: RoundModelUsage)
         && left.outputTokens === right.outputTokens
         && left.cacheReadInputTokens === right.cacheReadInputTokens
         && left.cacheCreationInputTokens === right.cacheCreationInputTokens
+        && left.contextWindow === right.contextWindow
 }
 
 function areRoundSummariesEqual(left?: RoundSummary, right?: RoundSummary): boolean {

@@ -244,6 +244,137 @@ describe('reduceChatBlocks', () => {
         })
     })
 
+    // Raw Claude output records, shaped as the hub stores them.
+    function claudeAssistant(id: string, createdAt: number, message: Record<string, unknown>, extra: Record<string, unknown> = {}) {
+        return decryptedMessage(id, {
+            role: 'agent',
+            content: {
+                type: 'output',
+                data: { type: 'assistant', uuid: id, parentUuid: null, isSidechain: false, message, ...extra }
+            }
+        }, createdAt)
+    }
+
+    function claudeTurnDuration(id: string, createdAt: number, modelUsage: Record<string, unknown>) {
+        return decryptedMessage(id, {
+            role: 'agent',
+            content: {
+                type: 'output',
+                data: {
+                    type: 'system',
+                    subtype: 'turn_duration',
+                    uuid: id,
+                    durationMs: 1000,
+                    resultSummary: { modelUsage, num_turns: 1, duration_ms: 1000 }
+                }
+            }
+        }, createdAt)
+    }
+
+    function reduceRaw(messages: DecryptedMessage[]) {
+        const normalized = messages.map(message => normalizeDecryptedMessage(message))
+            .filter((message): message is NormalizedMessage => message !== null)
+        return reduceChatBlocks(normalized, null)
+    }
+
+    it('keeps the last real usage when a request fails with a synthetic API error message', () => {
+        // Session d8e5a1c1, 2026-11-23 03:06Z: ECONNRESET wrote a `<synthetic>`
+        // assistant message with all-zero usage right after a ~125k reading.
+        const reduced = reduceRaw([
+            claudeAssistant('real', 1, {
+                role: 'assistant',
+                model: 'claude-opus-5-5',
+                content: [{ type: 'text', text: 'working' }],
+                usage: { input_tokens: 4, output_tokens: 80, cache_read_input_tokens: 124_606, cache_creation_input_tokens: 854, context_window: 1_000_000 }
+            }),
+            claudeAssistant('api-error', 2, {
+                role: 'assistant',
+                model: '<synthetic>',
+                content: [{ type: 'text', text: 'API Error: Connection dropped (ECONNRESET).' }],
+                usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, context_window: 1_000_000 }
+            }, { isApiErrorMessage: true, apiError: 'connection_failed' })
+        ])
+
+        expect(reduced.latestUsage).toMatchObject({
+            contextSize: 125_464,
+            contextWindow: 1_000_000,
+            model: 'claude-opus-5-5'
+        })
+    })
+
+    it('skips an all-zero usage reading even without the API error flag', () => {
+        const reduced = reduceRaw([
+            claudeAssistant('real', 1, {
+                role: 'assistant',
+                model: 'claude-opus-5-5',
+                content: [],
+                usage: { input_tokens: 2, output_tokens: 10, cache_read_input_tokens: 50_000 }
+            }),
+            claudeAssistant('empty', 2, {
+                role: 'assistant',
+                model: 'claude-opus-5-5',
+                content: [],
+                usage: { input_tokens: 0, output_tokens: 0 }
+            })
+        ])
+
+        expect(reduced.latestUsage?.contextSize).toBe(50_002)
+    })
+
+    it('prefers the window the SDK result reported over a seeded context_window on usage', () => {
+        // Session be6fe992, 2026-11-14: a resumed CLI seeded 200k for the bare
+        // "claude-opus-5-5" and the turn ran to 415k, reading >100% throughout,
+        // although every result of the session reports contextWindow 1,000,000.
+        const reduced = reduceRaw([
+            claudeTurnDuration('earlier-result', 1, {
+                'claude-opus-5-5': { inputTokens: 10, outputTokens: 10, contextWindow: 1_000_000 },
+                'claude-haiku-5-5': { inputTokens: 1, outputTokens: 1, contextWindow: 1_000_000 }
+            }),
+            claudeAssistant('seeded', 2, {
+                role: 'assistant',
+                model: 'claude-opus-5-5',
+                content: [],
+                usage: { input_tokens: 2, output_tokens: 10, cache_read_input_tokens: 198_000, cache_creation_input_tokens: 546, context_window: 200_000 }
+            })
+        ])
+
+        expect(reduced.latestUsage).toMatchObject({
+            contextSize: 198_548,
+            contextWindow: 1_000_000
+        })
+    })
+
+    it('drops a stamped context_window that the reading itself already exceeds', () => {
+        // be6fe992 seq 6802: 415k in context against a seeded 200k window, the
+        // turn's result far outside the loaded message window.
+        const reduced = reduceRaw([
+            claudeAssistant('seeded', 1, {
+                role: 'assistant',
+                model: 'claude-opus-5-5',
+                content: [],
+                usage: { input_tokens: 2, output_tokens: 10, cache_read_input_tokens: 415_000, context_window: 200_000 }
+            })
+        ])
+
+        expect(reduced.latestUsage).toMatchObject({ contextSize: 415_002, contextWindow: null, model: 'claude-opus-5-5' })
+    })
+
+    it('keeps the usage context_window when no result reported the model', () => {
+        const reduced = reduceRaw([
+            claudeTurnDuration('other-model', 1, {
+                'claude-haiku-4-5': { inputTokens: 1, outputTokens: 1, contextWindow: 200_000 }
+            }),
+            claudeAssistant('turn', 2, {
+                role: 'assistant',
+                model: 'claude-opus-5-5',
+                content: [],
+                usage: { input_tokens: 2, output_tokens: 10, cache_read_input_tokens: 100_000, context_window: 1_000_000 }
+            })
+        ])
+
+        expect(reduced.latestUsage?.contextWindow).toBe(1_000_000)
+    })
+
     it('keeps active goals visible across later normal user messages', () => {
         const reduced = reduceChatBlocks([
             goalMessage('goal-active', 'active', 1),

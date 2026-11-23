@@ -1,4 +1,4 @@
-import { ASSISTANT_COMPACT_COMMAND, ASSISTANT_CURATE_MARKER } from '@hapi/protocol'
+import { ASSISTANT_COMPACT_COMMAND, ASSISTANT_CURATE_MARKER, CLAUDE_DEFAULT_CONTEXT_WINDOW_TOKENS, getClaudeContextWindowTokens } from '@hapi/protocol'
 import type { Session, SyncEvent } from './syncEngine'
 
 /**
@@ -21,11 +21,9 @@ export function readCompactThreshold(env: NodeJS.ProcessEnv = process.env): numb
     return Number.isFinite(value) && value > 0 && value < 1 ? value : ASSISTANT_COMPACT_THRESHOLD
 }
 
-const DEFAULT_WINDOW_TOKENS = 200_000
-const LONG_WINDOW_TOKENS = 1_000_000
-
+/** Until a turn result reports the real window: the shared model table, else 200k. */
 export function contextWindowFor(model: string | null | undefined): number {
-    return model && /\[1m\]|1m$/i.test(model) ? LONG_WINDOW_TOKENS : DEFAULT_WINDOW_TOKENS
+    return getClaudeContextWindowTokens(model) ?? CLAUDE_DEFAULT_CONTEXT_WINDOW_TOKENS
 }
 
 const CURATE_BEFORE_COMPACT_PROMPT = (percent: number) =>
@@ -103,7 +101,10 @@ export class AssistantCompaction {
             ? content.content.data.message?.usage
             : undefined
         if (usage) {
-            entry.tokens = contextTokens(usage)
+            // A failed request leaves a `<synthetic>` message with all-zero
+            // usage; it says nothing about the context, so keep the last reading.
+            const tokens = contextTokens(usage)
+            if (tokens > 0) entry.tokens = tokens
             return
         }
         // Codex reports usage separately, with its own window.

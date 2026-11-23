@@ -1,4 +1,4 @@
-import { isClaudeModelPreset } from '@hapi/protocol'
+import { CLAUDE_DEFAULT_CONTEXT_WINDOW_TOKENS, getClaudeContextWindowTokens } from '@hapi/protocol'
 
 /**
  * Context windows vary by model/provider and may change over time.
@@ -11,8 +11,6 @@ import { isClaudeModelPreset } from '@hapi/protocol'
  * and use this only as a fallback.
  */
 const CONTEXT_HEADROOM_TOKENS = 10_000
-const DEFAULT_CLAUDE_CONTEXT_WINDOW_TOKENS = 200_000
-const LARGE_CLAUDE_CONTEXT_WINDOW_TOKENS = 1_000_000
 // Fallback for Codex sessions when the server has not reported an explicit modelContextWindow.
 // The value matches the context window currently reported by Codex App Server token-count events.
 const DEFAULT_CODEX_CONTEXT_WINDOW_TOKENS = 258_400
@@ -69,26 +67,12 @@ export function getContextBudgetTokens(model: string | null | undefined, flavor?
         return null
     }
 
+    // No model at all: assume the conservative window. A model we cannot
+    // place (not a Claude id) gets no budget rather than a wrong one.
     const trimmedModel = model?.trim()
-    const windowTokens = (() => {
-        if (!trimmedModel) {
-            return DEFAULT_CLAUDE_CONTEXT_WINDOW_TOKENS
-        }
-        if (isClaudeModelPreset(trimmedModel) || trimmedModel.startsWith('claude-')) {
-            // Fable ships with a 1M window even under its bare id: the SDK
-            // result message reports modelUsage["claude-fable-5"].contextWindow
-            // = 1,000,000, so the "[1m]" suffix check alone would undercount
-            // local-mode sessions (their transcript usage carries no
-            // context_window and falls through to this heuristic).
-            const isFable = trimmedModel === 'fable'
-                || trimmedModel === 'fable[1m]'
-                || trimmedModel.startsWith('claude-fable')
-            return trimmedModel.endsWith('[1m]') || isFable
-                ? LARGE_CLAUDE_CONTEXT_WINDOW_TOKENS
-                : DEFAULT_CLAUDE_CONTEXT_WINDOW_TOKENS
-        }
-        return null
-    })()
+    const windowTokens = trimmedModel
+        ? getClaudeContextWindowTokens(trimmedModel)
+        : CLAUDE_DEFAULT_CONTEXT_WINDOW_TOKENS
 
     if (!windowTokens) return null
     return Math.max(1, windowTokens - CONTEXT_HEADROOM_TOKENS)

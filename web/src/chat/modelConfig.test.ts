@@ -6,8 +6,22 @@ describe('getContextBudgetTokens', () => {
         expect(getContextBudgetTokens('sonnet[1m]', 'claude')).toBe(990_000)
     })
 
-    it('uses the default Claude budget for full Claude model names', () => {
+    it('uses the default Claude budget for pre-5 Claude model names', () => {
         expect(getContextBudgetTokens('claude-sonnet-4-6', 'claude')).toBe(190_000)
+        expect(getContextBudgetTokens('claude-haiku-4-5', 'claude')).toBe(190_000)
+    })
+
+    it('uses the large budget for current-generation Claude ids without a [1m] suffix', () => {
+        // SDK results report modelUsage[id].contextWindow = 1,000,000 for all of these.
+        expect(getContextBudgetTokens('claude-opus-5-5', 'claude')).toBe(990_000)
+        expect(getContextBudgetTokens('claude-sonnet-5-5', 'claude')).toBe(990_000)
+        expect(getContextBudgetTokens('claude-haiku-5-5', 'claude')).toBe(990_000)
+        expect(getContextBudgetTokens('opus', 'claude')).toBe(990_000)
+    })
+
+    it('falls back to the default Claude budget when the model is unknown', () => {
+        expect(getContextBudgetTokens(null, 'claude')).toBe(190_000)
+        expect(getContextBudgetTokens('<synthetic>', 'claude')).toBeNull()
     })
 
     it('uses the large budget for a full Claude model name carrying a [1m] suffix', () => {
