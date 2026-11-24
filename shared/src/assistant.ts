@@ -206,14 +206,25 @@ export type AssistantToolQuestionAdd = z.infer<typeof AssistantToolQuestionAddSc
  */
 export const SendAssistantMessageRequestSchema = z.object({
     workspaceUserId: z.string().min(1),
-    text: z.string().min(1),
+    text: z.string(),
     localId: z.string().min(1).optional(),
     attachments: z.array(AttachmentMetadataSchema).optional(),
     /** The task selected in the sidebar; absent or null for the task list. */
     contextTaskId: z.string().min(1).nullable().optional()
-})
+}).refine((value) => value.text.trim().length > 0 || (value.attachments?.length ?? 0) > 0, 'Message requires text or attachments')
 export type SendAssistantMessageRequest = z.infer<typeof SendAssistantMessageRequestSchema>
 export type SendAssistantMessageResponse = { sessionId: string; contextSent: boolean }
+
+/**
+ * Find, reopen or start the person's assistant without sending anything, so
+ * a file can be uploaded to the machine it runs on before the message goes.
+ */
+export const OpenAssistantSessionRequestSchema = z.object({
+    workspaceUserId: z.string().min(1),
+    contextTaskId: z.string().min(1).nullable().optional()
+})
+export type OpenAssistantSessionRequest = z.infer<typeof OpenAssistantSessionRequestSchema>
+export type OpenAssistantSessionResponse = { sessionId: string }
 export type AssistantSessionResponse = {
     sessionId: string | null
     agent: AssistantAgent

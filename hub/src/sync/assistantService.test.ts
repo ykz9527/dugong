@@ -74,6 +74,19 @@ beforeEach(() => {
 })
 
 describe('AssistantService', () => {
+    it('opens the assistant for an upload without sending, then the message carries the files to it', async () => {
+        const opened = await service.open({ namespace: 'default', workspaceUserId: kaiId, contextTaskId: null })
+        expect(opened).toEqual({ type: 'success', sessionId: 's-1' })
+        expect(sent).toHaveLength(0)
+
+        const attachment = { id: 'a-1', filename: 'shot.png', mimeType: 'image/png', size: 3, path: '/tmp/hapi-blobs/s-1-x/shot.png' }
+        const result = await service.send({ namespace: 'default', workspaceUserId: kaiId, text: '', attachments: [attachment] })
+        expect(result).toMatchObject({ type: 'success', sessionId: 's-1' })
+        expect(spawns).toHaveLength(1)
+        expect(sent[0]?.[0]).toBe('s-1')
+        expect(sent[0]?.[1].attachments).toEqual([attachment])
+    })
+
     it('starts one assistant per person, with their directories, even when two sends race', async () => {
         const [a, b] = await Promise.all([
             service.send({ namespace: 'default', workspaceUserId: kaiId, text: 'hi' }),

@@ -136,7 +136,8 @@ everything not running under them. Anyone in the namespace can read and edit the
 ### Task assistant (`src/web/routes/assistant.ts`)
 
 - `GET /api/assistant/session`, `PUT /api/assistant/agent`, `PUT /api/assistant/machine` - The workspace user's assistant session, its agent, and the machine it is pinned to (`null` = automatic; a pinned machine that is offline is an error, not a fallback).
-- `POST /api/assistant/messages` - Send a message, optionally about one task.
+- `POST /api/assistant/session` - Find, wake or start the assistant without sending anything, so files can be uploaded (`POST /api/sessions/:id/upload`) to the machine it runs on.
+- `POST /api/assistant/messages` - Send a message, optionally about one task, with uploaded files as `attachments` (text may be empty then).
 - `GET/POST /api/assistant/memories`, `PATCH/DELETE /api/assistant/memories/:id`, `POST /api/assistant/memories/:id/undo` - Memory.
 - `GET /api/assistant/grants`, `DELETE /api/assistant/grants/:id` - Standing grants.
 - `GET /api/assistant/questions`, `POST /api/assistant/questions/:id/answer` - Decisions the assistant made and asks about afterwards.

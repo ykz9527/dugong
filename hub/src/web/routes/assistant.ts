@@ -1,6 +1,7 @@
 import {
     AnswerAssistantQuestionRequestSchema,
     CreateAssistantMemoryRequestSchema,
+    OpenAssistantSessionRequestSchema,
     SendAssistantMessageRequestSchema,
     SetAssistantAgentRequestSchema,
     SetAssistantMachineRequestSchema,
@@ -18,6 +19,7 @@ import {
     type AnswerAssistantQuestionResponse,
     type AssistantQuestionListResponse,
     type AssistantSessionResponse,
+    type OpenAssistantSessionResponse,
     type SendAssistantMessageResponse
 } from '@hapi/protocol'
 import { Hono, type Context } from 'hono'
@@ -267,6 +269,29 @@ export function createAssistantRoutes(options: {
             return c.json({ error: 'That machine is offline' }, 409)
         }
         const response: AssistantSessionResponse = service.describe(namespace, parsed.data.workspaceUserId)
+        return c.json(response)
+    })
+
+    /** Start (or wake) the assistant so a file can be uploaded to its session. */
+    app.post('/assistant/session', async (c) => {
+        const service = getAssistantService()
+        if (!service) {
+            return c.json({ error: 'Hub is still starting up' }, 503)
+        }
+        const body = await c.req.json().catch(() => null)
+        const parsed = OpenAssistantSessionRequestSchema.safeParse(body)
+        if (!parsed.success) {
+            return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid request' }, 400)
+        }
+        const result = await service.open({
+            namespace: c.get('namespace'),
+            workspaceUserId: parsed.data.workspaceUserId,
+            contextTaskId: parsed.data.contextTaskId
+        })
+        if (result.type === 'error') {
+            return c.json({ error: result.message }, result.status)
+        }
+        const response: OpenAssistantSessionResponse = { sessionId: result.sessionId }
         return c.json(response)
     })
 

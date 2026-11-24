@@ -79,6 +79,17 @@ export type AssistantSendInput = {
     contextTaskId?: string | null
 }
 
+export type AssistantOpenInput = {
+    namespace: string
+    workspaceUserId: string
+    /** The task selected in the sidebar, if any; picks the machine for a fresh start. */
+    contextTaskId?: string | null
+}
+
+export type AssistantOpenResult =
+    | { type: 'success'; sessionId: string }
+    | { type: 'error'; status: 403 | 404 | 503; message: string }
+
 export type AssistantSendResult =
     | { type: 'success'; sessionId: string; contextSent: boolean }
     | { type: 'error'; status: 403 | 404 | 503; message: string }
@@ -165,7 +176,41 @@ export class AssistantService {
         return 'ok'
     }
 
+    /**
+     * The person's running assistant, found, reopened or started. Uploads go
+     * through here first: a file has to land on the machine the assistant
+     * runs on, so the session must be up before the message is sent.
+     */
+    async open(input: AssistantOpenInput): Promise<AssistantOpenResult> {
+        const opened = await this.resolve(input)
+        if (opened.type === 'error') return opened
+        return { type: 'success', sessionId: opened.sessionId }
+    }
+
     async send(input: AssistantSendInput): Promise<AssistantSendResult> {
+        const resolved = await this.resolve(input)
+        if (resolved.type === 'error') return resolved
+        const { user, task } = resolved
+
+        const context = this.buildContext(user, task)
+        const changed = this.lastContextKey.get(resolved.sessionId) !== context.key
+        await this.deps.send(resolved.sessionId, {
+            text: input.text,
+            localId: input.localId,
+            attachments: input.attachments,
+            sentFrom: 'webapp',
+            ...(changed ? { taskContext: context.text } : {})
+        })
+        if (changed) {
+            this.lastContextKey.set(resolved.sessionId, context.key)
+        }
+        return { type: 'success', sessionId: resolved.sessionId, contextSent: changed }
+    }
+
+    private async resolve(input: AssistantOpenInput): Promise<
+        | { type: 'success'; sessionId: string; user: StoredWorkspaceUser; task: StoredTask | null }
+        | { type: 'error'; status: 403 | 404 | 503; message: string }
+    > {
         const { namespace, workspaceUserId } = input
         const user = this.deps.store.workspaceUsers.get(workspaceUserId, namespace)
         if (!user) {
@@ -183,24 +228,11 @@ export class AssistantService {
             }
         }
 
-        const resolved = await this.ensureSession(user, task)
-        if ('error' in resolved) {
-            return { type: 'error', status: 503, message: resolved.error }
+        const ensured = await this.ensureSession(user, task)
+        if ('error' in ensured) {
+            return { type: 'error', status: 503, message: ensured.error }
         }
-
-        const context = this.buildContext(user, task)
-        const changed = this.lastContextKey.get(resolved.sessionId) !== context.key
-        await this.deps.send(resolved.sessionId, {
-            text: input.text,
-            localId: input.localId,
-            attachments: input.attachments,
-            sentFrom: 'webapp',
-            ...(changed ? { taskContext: context.text } : {})
-        })
-        if (changed) {
-            this.lastContextKey.set(resolved.sessionId, context.key)
-        }
-        return { type: 'success', sessionId: resolved.sessionId, contextSent: changed }
+        return { type: 'success', sessionId: ensured.sessionId, user, task }
     }
 
     /** After a compaction the assistant has forgotten the block; send it again. */

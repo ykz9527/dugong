@@ -91,6 +91,8 @@ import type {
     AssistantMemoryUndoResponse,
     AssistantSessionResponse,
     CreateAssistantMemoryRequest,
+    OpenAssistantSessionRequest,
+    OpenAssistantSessionResponse,
     SendAssistantMessageRequest,
     SendAssistantMessageResponse,
     SetAssistantAgentRequest,
@@ -392,6 +394,13 @@ export class ApiClient {
     async setAssistantMachine(payload: SetAssistantMachineRequest): Promise<AssistantSessionResponse> {
         return await this.request<AssistantSessionResponse>('/api/assistant/machine', {
             method: 'PUT',
+            body: JSON.stringify(payload)
+        })
+    }
+
+    async openAssistantSession(payload: OpenAssistantSessionRequest): Promise<OpenAssistantSessionResponse> {
+        return await this.request<OpenAssistantSessionResponse>('/api/assistant/session', {
+            method: 'POST',
             body: JSON.stringify(payload)
         })
     }

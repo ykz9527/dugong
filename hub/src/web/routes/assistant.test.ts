@@ -285,3 +285,47 @@ describe('assistant machine route', () => {
         expect((await put({ workspaceUserId: kaiId })).status).toBe(400)
     })
 })
+
+describe('assistant message route', () => {
+    const sends: Array<{ text: string; attachments?: unknown[] }> = []
+    beforeEach(() => {
+        sends.length = 0
+        const session = {
+            id: 's-1', namespace: 'default', active: true, updatedAt: 1,
+            metadata: { path: '/a', host: 'h', role: 'assistant', workspaceUserId: kaiId, flavor: 'claude', machineId: 'm-1' }
+        }
+        const service = new AssistantService({
+            store,
+            getSession: (id) => (id === 's-1' ? session : undefined) as never,
+            listSessions: () => [session] as never,
+            onlineMachineIds: () => ['m-1'],
+            spawn: async () => ({ type: 'error', message: 'unused' }),
+            reopen: async () => ({ type: 'error', message: 'unused' }),
+            stop: async () => {},
+            send: async (_id, payload) => { sends.push(payload) }
+        })
+        app = new Hono<WebAppEnv>()
+        app.use('*', createAuthMiddleware(JWT_SECRET))
+        app.route('/api', createAssistantRoutes({ store, publish: (event) => events.push(event), getAssistantService: () => service }))
+    })
+
+    const post = async (path: string, body: unknown) => app.request(`/api/assistant/${path}`, {
+        method: 'POST', headers: await headers(), body: JSON.stringify(body)
+    })
+
+    it('opens the session for an upload and takes a files-only message', async () => {
+        const opened = await post('session', { workspaceUserId: kaiId })
+        expect(opened.status).toBe(200)
+        expect(await opened.json()).toEqual({ sessionId: 's-1' })
+
+        const attachment = { id: 'a', filename: 'notes.txt', mimeType: 'text/plain', size: 5, path: '/tmp/hapi-blobs/x/notes.txt' }
+        const res = await post('messages', { workspaceUserId: kaiId, text: '', attachments: [attachment] })
+        expect(res.status).toBe(200)
+        expect(sends[0]?.attachments).toEqual([attachment])
+    })
+
+    it('refuses a message with neither text nor files', async () => {
+        expect((await post('messages', { workspaceUserId: kaiId, text: '  ' })).status).toBe(400)
+        expect(sends).toHaveLength(0)
+    })
+})

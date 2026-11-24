@@ -6,6 +6,8 @@ import { ApiError, type ApiClient } from '@/api/client'
 import { AppContextProvider } from '@/lib/app-context'
 import { I18nProvider } from '@/lib/i18n-context'
 import { setActiveWorkspaceUserId } from '@/lib/activeWorkspaceUser'
+import { getDraftAttachments } from '@/lib/composer-attachment-drafts'
+import { getDraft } from '@/lib/composer-drafts'
 import { AssistantPanel } from './AssistantPanel'
 
 function makeMemory(overrides: Partial<AssistantMemory> = {}): AssistantMemory {
@@ -74,6 +76,7 @@ afterEach(() => {
     cleanup()
     act(() => setActiveWorkspaceUserId(null))
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
 })
 
 describe('AssistantPanel', () => {
@@ -95,6 +98,34 @@ describe('AssistantPanel', () => {
             .toBe('Could not load the assistant: Workspace user not found')
         fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
         await waitFor(() => expect(getAssistantSession).toHaveBeenCalledTimes(2))
+    })
+
+    it('starts the assistant for a file picked before the first message, and hands it to the composer', async () => {
+        // The thread opens its own event stream once the session exists.
+        vi.stubGlobal('EventSource', class { close() {} addEventListener() {} })
+        let started: string | null = null
+        const openAssistantSession = vi.fn(async () => {
+            started = 's-new'
+            return { sessionId: started }
+        })
+        const sendAssistantMessage = vi.fn()
+        renderPanel(makeApi({
+            openAssistantSession,
+            sendAssistantMessage,
+            getAssistantSession: vi.fn(async () => ({ sessionId: started, agent: 'claude', machineId: null, sessionMachineId: null })),
+            getSession: vi.fn(() => new Promise(() => {}))
+        }))
+
+        fireEvent.change(await screen.findByPlaceholderText('Ask the assistant about your tasks'), { target: { value: 'what is this?' } })
+        const input = document.querySelector('input[type="file"]') as HTMLInputElement
+        const file = new File(['hello'], 'notes.txt', { type: 'text/plain' })
+        fireEvent.change(input, { target: { files: [file] } })
+
+        await waitFor(() => expect(openAssistantSession).toHaveBeenCalledWith({ workspaceUserId: 'user-kai', contextTaskId: null }))
+        expect(sendAssistantMessage).not.toHaveBeenCalled()
+        expect(getDraft('s-new')).toBe('what is this?')
+        expect((await getDraftAttachments('s-new')).map((stored) => stored.name)).toEqual(['notes.txt'])
+        await waitFor(() => expect(screen.queryByPlaceholderText('Ask the assistant about your tasks')).toBeNull())
     })
 
     it('ties each tab to its panel', async () => {

@@ -181,7 +181,7 @@ function TerminalIcon() {
     )
 }
 
-function AttachmentIcon() {
+export function AttachmentIcon() {
     return (
         <svg
             xmlns="http://www.w3.org/2000/svg"
