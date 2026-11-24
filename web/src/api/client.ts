@@ -94,6 +94,7 @@ import type {
     SendAssistantMessageRequest,
     SendAssistantMessageResponse,
     SetAssistantAgentRequest,
+    SetAssistantMachineRequest,
     UndoAssistantMemoryRequest,
     UpdateAssistantMemoryRequest
 } from '@hapi/protocol'
@@ -383,6 +384,13 @@ export class ApiClient {
 
     async setAssistantAgent(payload: SetAssistantAgentRequest): Promise<AssistantSessionResponse> {
         return await this.request<AssistantSessionResponse>('/api/assistant/agent', {
+            method: 'PUT',
+            body: JSON.stringify(payload)
+        })
+    }
+
+    async setAssistantMachine(payload: SetAssistantMachineRequest): Promise<AssistantSessionResponse> {
+        return await this.request<AssistantSessionResponse>('/api/assistant/machine', {
             method: 'PUT',
             body: JSON.stringify(payload)
         })

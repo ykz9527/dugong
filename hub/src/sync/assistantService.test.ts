@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'bun:test'
 import { Store } from '../store'
-import { AssistantService, type AssistantServiceDeps } from './assistantService'
+import { AssistantService, PINNED_MACHINE_OFFLINE, type AssistantServiceDeps } from './assistantService'
 import type { Session } from './syncEngine'
 
 type Sent = Parameters<AssistantServiceDeps['send']>
@@ -13,14 +13,15 @@ let spawns: Array<Parameters<AssistantServiceDeps['spawn']>>
 let reopens: string[]
 let stops: string[]
 let service: AssistantService
+let online: string[]
 
-function assistantSession(id: string, active: boolean, workspaceUserId = kaiId, flavor = 'claude'): Session {
+function assistantSession(id: string, active: boolean, workspaceUserId = kaiId, flavor = 'claude', machineId?: string): Session {
     return {
         id,
         namespace: 'default',
         active,
         updatedAt: Date.now(),
-        metadata: { path: `/hapi/assistant/${workspaceUserId}`, host: 'h', role: 'assistant', workspaceUserId, flavor }
+        metadata: { path: `/hapi/assistant/${workspaceUserId}`, host: 'h', role: 'assistant', workspaceUserId, flavor, machineId }
     } as unknown as Session
 }
 
@@ -44,22 +45,23 @@ beforeEach(() => {
     spawns = []
     reopens = []
     stops = []
+    online = ['m-1', 'm-task']
     service = new AssistantService({
         store,
         getSession: (id) => sessions.get(id),
         listSessions: () => [...sessions.values()],
-        onlineMachineIds: () => ['m-1', 'm-task'],
+        onlineMachineIds: () => online,
         spawn: async (machineId, agent, extra) => {
             spawns.push([machineId, agent, extra])
             await new Promise((resolve) => setTimeout(resolve, 5))
-            const session = assistantSession(`s-${spawns.length}`, true, kaiId, agent)
+            const session = assistantSession(`s-${spawns.length}`, true, kaiId, agent, machineId)
             sessions.set(session.id, session)
             return { type: 'success', sessionId: session.id }
         },
         reopen: async (id) => {
             reopens.push(id)
             const old = sessions.get(id)
-            sessions.set(id, assistantSession(id, true, kaiId, old?.metadata?.flavor ?? 'claude'))
+            sessions.set(id, assistantSession(id, true, kaiId, old?.metadata?.flavor ?? 'claude', old?.metadata?.machineId))
             return { type: 'success', sessionId: id }
         },
         send: async (...args) => { sent.push(args) },
@@ -136,6 +138,66 @@ describe('AssistantService', () => {
         const back = await service.send({ namespace: 'default', workspaceUserId: kaiId, text: 'back' })
         expect(reopens).toEqual(['s-1'])
         expect(back).toMatchObject({ type: 'success', sessionId: 's-1' })
+    })
+
+    it('switching machines stops the old conversation, keeps memory, and reopens it on the way back', async () => {
+        store.assistant.createMemory({
+            namespace: 'default', workspaceUserId: kaiId, scope: 'user', scopeRef: kaiId,
+            name: 'tabs', description: '用 tab 缩进', type: 'feedback', body: '…', author: 'human'
+        })
+        await service.send({ namespace: 'default', workspaceUserId: kaiId, text: 'hi' })
+        expect(spawns[0][0]).toBe('m-1')
+
+        expect(await service.setMachine('default', kaiId, 'm-task')).toBe('ok')
+        expect(stops).toEqual(['s-1'])
+        expect(service.describe('default', kaiId)).toEqual({ sessionId: null, agent: 'claude', machineId: 'm-task', sessionMachineId: null })
+
+        const moved = await service.send({ namespace: 'default', workspaceUserId: kaiId, text: 'over here' })
+        expect(spawns.map(([machineId]) => machineId)).toEqual(['m-1', 'm-task'])
+        // A fresh conversation is told what it remembers.
+        expect(moved).toMatchObject({ type: 'success', sessionId: 's-2', contextSent: true })
+        expect(sent[1][1].taskContext).toContain('[user] tabs')
+
+        await service.setMachine('default', kaiId, 'm-1')
+        expect(stops).toEqual(['s-1', 's-2'])
+        const back = await service.send({ namespace: 'default', workspaceUserId: kaiId, text: 'back' })
+        expect(reopens).toEqual(['s-1'])
+        expect(back).toMatchObject({ type: 'success', sessionId: 's-1' })
+        expect(spawns).toHaveLength(2)
+    })
+
+    it('runs a pinned assistant on its machine even when the task is elsewhere', async () => {
+        await service.setMachine('default', kaiId, 'm-1')
+        const task = makeTask('/home/kai/hapi')
+        await service.send({ namespace: 'default', workspaceUserId: kaiId, text: 'hi', contextTaskId: task.id })
+        expect(spawns[0][0]).toBe('m-1')
+    })
+
+    it('says so when the pinned machine is offline instead of running elsewhere', async () => {
+        await service.setMachine('default', kaiId, 'm-task')
+        online = ['m-1']
+
+        const result = await service.send({ namespace: 'default', workspaceUserId: kaiId, text: 'hi' })
+        expect(result).toEqual({ type: 'error', status: 503, message: PINNED_MACHINE_OFFLINE })
+        expect(spawns).toHaveLength(0)
+        expect(sent).toHaveLength(0)
+
+        // Back to Auto, the assistant runs where it can.
+        await service.setMachine('default', kaiId, null)
+        expect(await service.send({ namespace: 'default', workspaceUserId: kaiId, text: 'hi' })).toMatchObject({ type: 'success' })
+        expect(spawns[0][0]).toBe('m-1')
+    })
+
+    it('will not pin to an offline machine, and going back to Auto stops nothing', async () => {
+        await service.send({ namespace: 'default', workspaceUserId: kaiId, text: 'hi' })
+        expect(await service.setMachine('default', kaiId, 'm-gone')).toBe('machine-offline')
+        expect(await service.setMachine('default', 'nobody', 'm-1')).toBe('user-not-found')
+        expect(store.assistant.getMachineId(kaiId, 'default')).toBeNull()
+
+        await service.setMachine('default', kaiId, 'm-1')
+        await service.setMachine('default', kaiId, null)
+        expect(stops).toEqual([])
+        expect(service.describe('default', kaiId)).toMatchObject({ sessionId: 's-1', machineId: null, sessionMachineId: 'm-1' })
     })
 
     it('will not look at someone else\'s task', async () => {

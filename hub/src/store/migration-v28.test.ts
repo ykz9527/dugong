@@ -34,7 +34,7 @@ describe('schema migration v27 to v28', () => {
 
         const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>
         expect(tables.some((table) => table.name === 'workspace_users')).toBe(true)
-        expect(userVersion(db)).toBe(34)
+        expect(userVersion(db)).toBe(35)
 
         store.close()
     })
@@ -58,7 +58,7 @@ describe('schema migration v27 to v28', () => {
 
         const migrated = new Store(dbPath)
         const db = internalDb(migrated)
-        expect(userVersion(db)).toBe(34)
+        expect(userVersion(db)).toBe(35)
 
         // Nobody owns anything yet, which is what keeps every existing board
         // showing exactly what it showed before the upgrade.

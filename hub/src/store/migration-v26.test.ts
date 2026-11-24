@@ -53,7 +53,7 @@ describe('schema migration v25 to v26', () => {
         expect(columnNames(db, 'sessions').has('task_id')).toBe(true)
 
         const version = db.prepare('PRAGMA user_version').get() as { user_version: number }
-        expect(version.user_version).toBe(34)
+        expect(version.user_version).toBe(35)
 
         store.close()
     })
@@ -89,7 +89,7 @@ describe('schema migration v25 to v26', () => {
         expect(columnNames(db, 'sessions').has('task_id')).toBe(true)
 
         const version = db.prepare('PRAGMA user_version').get() as { user_version: number }
-        expect(version.user_version).toBe(34)
+        expect(version.user_version).toBe(35)
 
         // The pre-existing session survives, unattached to any task.
         const session = migrated.sessions.getSession('sess-1')

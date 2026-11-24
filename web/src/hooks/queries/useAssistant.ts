@@ -34,11 +34,16 @@ function requireApi(api: ApiClient | null): ApiClient {
 export function useAssistantSessionId(api: ApiClient | null, workspaceUserId: string | null): {
     sessionId: string | null
     agent: AssistantAgent
+    /** The machine the person pinned the assistant to; null is automatic. */
+    machineId: string | null
+    /** Where the current conversation runs, when there is one. */
+    sessionMachineId: string | null
     isLoading: boolean
     /** The lookup itself failed; the panel cannot tell "no assistant yet" from this. */
     error: string | null
     setSessionId: (sessionId: string) => void
     setAgent: (agent: AssistantAgent) => Promise<void>
+    setMachine: (machineId: string | null) => Promise<void>
     /** Ask the hub again; it finds the assistant by metadata if the id went stale. */
     refresh: () => void
 } {
@@ -57,22 +62,36 @@ export function useAssistantSessionId(api: ApiClient | null, workspaceUserId: st
         void queryClient.invalidateQueries({ queryKey: queryKeys.assistantSession(workspaceUserId) })
     }, [queryClient, workspaceUserId])
     const agent = query.data?.agent ?? DEFAULT_ASSISTANT_AGENT
+    const machineId = query.data?.machineId ?? null
     return {
         sessionId: query.data?.sessionId ?? null,
         agent,
+        machineId,
+        sessionMachineId: query.data?.sessionMachineId ?? null,
         isLoading: query.isLoading,
         error: query.error ? readableError(query.error) : null,
         // The hub answers every send with the session it used; a reopen can
         // fold the conversation into a new row, and the panel follows it.
         setSessionId: (sessionId) => {
             if (!workspaceUserId) return
-            queryClient.setQueryData(queryKey, { sessionId, agent })
+            const current = query.data
+            if (current?.sessionId === sessionId) return
+            // A new conversation runs where the pin says, or wherever the hub
+            // chose; ask the hub which machine that was.
+            queryClient.setQueryData(queryKey, { sessionId, agent, machineId, sessionMachineId: machineId })
+            if (!machineId) refresh()
         },
         // Each agent keeps its own conversation; the hub answers with the
         // new agent's session, if it already has one.
         setAgent: async (next) => {
             if (!api || !workspaceUserId) return
             queryClient.setQueryData(queryKey, await api.setAssistantAgent({ workspaceUserId, agent: next }))
+        },
+        // Same for machines: the hub stops the conversation elsewhere and
+        // answers with the one on the new machine, if any.
+        setMachine: async (next) => {
+            if (!api || !workspaceUserId) return
+            queryClient.setQueryData(queryKey, await api.setAssistantMachine({ workspaceUserId, machineId: next }))
         },
         refresh
     }

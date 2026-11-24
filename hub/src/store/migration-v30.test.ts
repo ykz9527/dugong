@@ -40,7 +40,7 @@ describe('schema migration v29 to v30', () => {
         expect(columns(db, 'assistant_memories')).toContain('previous_json')
         expect(columns(db, 'assistant_grants')).toContain('tool')
         expect(columns(db, 'workspace_users')).toContain('assistant_session_id')
-        expect(userVersion(db)).toBe(34)
+        expect(userVersion(db)).toBe(35)
 
         store.close()
     })
@@ -62,7 +62,7 @@ describe('schema migration v29 to v30', () => {
         legacy.close()
 
         const migrated = new Store(dbPath)
-        expect(userVersion(internalDb(migrated))).toBe(34)
+        expect(userVersion(internalDb(migrated))).toBe(35)
         expect(migrated.workspaceUsers.get(kai.id, 'default')?.name).toBe('Kai')
         expect(migrated.assistant.getSessionId(kai.id, 'default')).toBeNull()
 

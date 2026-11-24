@@ -3,6 +3,7 @@ import {
     CreateAssistantMemoryRequestSchema,
     SendAssistantMessageRequestSchema,
     SetAssistantAgentRequestSchema,
+    SetAssistantMachineRequestSchema,
     UndoAssistantMemoryRequestSchema,
     UpdateAssistantMemoryRequestSchema,
     assistantRepoKey,
@@ -218,10 +219,13 @@ export function createAssistantRoutes(options: {
         if (!user) {
             return c.json({ error: 'Workspace user not found' }, 404)
         }
+        const namespace = c.get('namespace')
         const service = getAssistantService()
-        const response: AssistantSessionResponse = {
-            sessionId: service?.findSessionId(c.get('namespace'), user.id) ?? null,
-            agent: store.assistant.getAgent(user.id, c.get('namespace'))
+        const response: AssistantSessionResponse = service?.describe(namespace, user.id) ?? {
+            sessionId: null,
+            agent: store.assistant.getAgent(user.id, namespace),
+            machineId: store.assistant.getMachineId(user.id, namespace),
+            sessionMachineId: null
         }
         return c.json(response)
     })
@@ -240,10 +244,29 @@ export function createAssistantRoutes(options: {
         if (!await service.setAgent(namespace, parsed.data.workspaceUserId, parsed.data.agent)) {
             return c.json({ error: 'Workspace user not found' }, 404)
         }
-        const response: AssistantSessionResponse = {
-            sessionId: service.findSessionId(namespace, parsed.data.workspaceUserId),
-            agent: parsed.data.agent
+        const response: AssistantSessionResponse = service.describe(namespace, parsed.data.workspaceUserId)
+        return c.json(response)
+    })
+
+    app.put('/assistant/machine', async (c) => {
+        const service = getAssistantService()
+        if (!service) {
+            return c.json({ error: 'Hub is still starting up' }, 503)
         }
+        const body = await c.req.json().catch(() => null)
+        const parsed = SetAssistantMachineRequestSchema.safeParse(body)
+        if (!parsed.success) {
+            return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid request' }, 400)
+        }
+        const namespace = c.get('namespace')
+        const outcome = await service.setMachine(namespace, parsed.data.workspaceUserId, parsed.data.machineId)
+        if (outcome === 'user-not-found') {
+            return c.json({ error: 'Workspace user not found' }, 404)
+        }
+        if (outcome === 'machine-offline') {
+            return c.json({ error: 'That machine is offline' }, 409)
+        }
+        const response: AssistantSessionResponse = service.describe(namespace, parsed.data.workspaceUserId)
         return c.json(response)
     })
 

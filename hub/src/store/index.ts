@@ -67,7 +67,7 @@ export {
     WorkGraphValidationError
 } from './workGraph'
 
-const SCHEMA_VERSION: number = 34
+const SCHEMA_VERSION: number = 35
 const REQUIRED_TABLES = [
     'sessions',
     'machines',
@@ -190,7 +190,10 @@ const WORKSPACE_USER_SCHEMA_SQL = `
         -- moved by the hub rather than cascaded by SQLite.
         assistant_session_id TEXT,
         -- v32: which coding agent backs the assistant; NULL is the default.
-        assistant_agent TEXT
+        assistant_agent TEXT,
+        -- v35: the machine the person pinned the assistant to; NULL picks
+        -- one automatically. No FK: machines come and go.
+        assistant_machine_id TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_workspace_users_namespace
         ON workspace_users(namespace, name);
@@ -616,6 +619,7 @@ export class Store {
             31: () => this.migrateFromV31ToV32(),
             32: () => this.migrateFromV32ToV33(),
             33: () => this.migrateFromV33ToV34(),
+            34: () => this.migrateFromV34ToV35(),
         })
 
         if (currentVersion === 0) {
@@ -1327,6 +1331,11 @@ export class Store {
 
     private migrateFromV33ToV34(): void {
         this.addColumnIfMissing('task_schedules', 'session_mode')
+    }
+
+    /** v34->v35: the machine a workspace user's assistant is pinned to. */
+    private migrateFromV34ToV35(): void {
+        this.addColumnIfMissing('workspace_users', 'assistant_machine_id')
     }
 
     /** No-op when the table does not exist yet; `createSchema` builds it with

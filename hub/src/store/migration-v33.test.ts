@@ -50,7 +50,7 @@ describe('schema migration v32 to v33', () => {
         legacy.close()
 
         const migrated = new Store(dbPath)
-        expect(userVersion(internalDb(migrated))).toBe(34)
+        expect(userVersion(internalDb(migrated))).toBe(35)
         expect(migrated.tasks.get(task.id)?.title).toBe('Nightly')
 
         const schedule = migrated.taskSchedules.upsert({

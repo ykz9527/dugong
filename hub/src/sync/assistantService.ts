@@ -8,6 +8,7 @@ import {
     isOwnedByWorkspaceUser,
     neutraliseTaskContextTags,
     type AssistantAgent,
+    type AssistantSessionResponse,
     type AttachmentMetadata
 } from '@hapi/protocol'
 import type { Store, StoredAssistantMemory, StoredAssistantQuestion, StoredTask, StoredWorkspaceUser } from '../store'
@@ -39,6 +40,15 @@ const ATTACH_TIMEOUT_MS = 30_000
 const REOPEN_RETRY_DELAY_MS = 1_500
 const ATTACH_POLL_MS = 50
 const TASK_PROMPT_EXCERPT = 500
+
+/**
+ * A pinned machine that is down is an error, not a cue to run elsewhere: the
+ * person pinned it on purpose, usually to get away from another machine (a
+ * broken login there, or their directories live here), and a silent fallback
+ * would put them back where they did not want to be.
+ */
+export const PINNED_MACHINE_OFFLINE =
+    'The machine chosen for the assistant is offline. Pick another machine, or Auto, at the top of the assistant panel.'
 
 export type AssistantServiceDeps = {
     store: Store
@@ -98,6 +108,21 @@ export class AssistantService {
         return this.deps.store.assistant.getAgent(workspaceUserId, namespace)
     }
 
+    getMachineId(namespace: string, workspaceUserId: string): string | null {
+        return this.deps.store.assistant.getMachineId(workspaceUserId, namespace)
+    }
+
+    /** What the panel shows: the conversation in reach, and where it runs. */
+    describe(namespace: string, workspaceUserId: string): AssistantSessionResponse {
+        const session = this.findSession(namespace, workspaceUserId)
+        return {
+            sessionId: session?.id ?? null,
+            agent: this.getAgent(namespace, workspaceUserId),
+            machineId: this.getMachineId(namespace, workspaceUserId),
+            sessionMachineId: session?.metadata?.machineId ?? null
+        }
+    }
+
     /**
      * Switch the agent behind the assistant. Each agent keeps its own
      * conversation: the running one of the old agent is stopped, and the
@@ -113,6 +138,31 @@ export class AssistantService {
             await this.deps.stop(session.id).catch(() => {})
         }
         return true
+    }
+
+    /**
+     * Pin the assistant to a machine, or `null` to pick one automatically.
+     * Like an agent switch: each machine keeps its own conversation, the one
+     * running elsewhere is stopped, and the next message finds (or starts)
+     * the one on the new machine. Memory, questions and grants belong to the
+     * person, so they come along. Going back to Auto stops nothing: wherever
+     * the assistant runs now is a fine automatic choice.
+     */
+    async setMachine(
+        namespace: string,
+        workspaceUserId: string,
+        machineId: string | null
+    ): Promise<'ok' | 'user-not-found' | 'machine-offline'> {
+        if (!this.deps.store.workspaceUsers.get(workspaceUserId, namespace)) return 'user-not-found'
+        if (machineId && !this.deps.onlineMachineIds(namespace).includes(machineId)) return 'machine-offline'
+        this.deps.store.assistant.setMachineId(workspaceUserId, namespace, machineId)
+        if (!machineId) return 'ok'
+        const elsewhere = this.deps.listSessions(namespace)
+            .filter((session) => session.active && isAssistantOf(session, workspaceUserId) && session.metadata?.machineId !== machineId)
+        for (const session of elsewhere) {
+            await this.deps.stop(session.id).catch(() => {})
+        }
+        return 'ok'
     }
 
     async send(input: AssistantSendInput): Promise<AssistantSendResult> {
@@ -160,14 +210,17 @@ export class AssistantService {
 
     private findSession(namespace: string, workspaceUserId: string): Session | null {
         const agent = this.getAgent(namespace, workspaceUserId)
-        const matches = (session: Session) => isAssistantOf(session, workspaceUserId) && agentOf(session) === agent
+        const pinned = this.getMachineId(namespace, workspaceUserId)
+        const matches = (session: Session) => isAssistantOf(session, workspaceUserId)
+            && agentOf(session) === agent
+            && (!pinned || session.metadata?.machineId === pinned)
         const pointer = this.deps.store.assistant.getSessionId(workspaceUserId, namespace)
         if (pointer) {
             const session = this.deps.getSession(pointer, namespace)
             if (session && matches(session)) return session
         }
         // The pointer can go stale: a reopen may fold the session into another
-        // row, or the person switched agents. The metadata is the ground
+        // row, or the person switched agents or machines. The metadata is the ground
         // truth; the newest match wins.
         const found = this.deps.listSessions(namespace)
             .filter(matches)
@@ -202,6 +255,10 @@ export class AssistantService {
         // machine that is up. Memory, questions and grants carry over; the
         // old conversation does not.
         const online = this.deps.onlineMachineIds(namespace)
+        const pinned = this.getMachineId(namespace, user.id)
+        if (pinned && !online.includes(pinned)) {
+            return { error: PINNED_MACHINE_OFFLINE }
+        }
         const existingMachine = existing?.metadata?.machineId
         const canReopen = existing !== null && (!existingMachine || online.includes(existingMachine))
 
@@ -217,7 +274,8 @@ export class AssistantService {
             }
             sessionId = reopened.sessionId
         } else {
-            const machineId = task?.machineId && online.includes(task.machineId) ? task.machineId : online[0]
+            const machineId = pinned
+                ?? (task?.machineId && online.includes(task.machineId) ? task.machineId : online[0])
             if (!machineId) {
                 return { error: 'No machine is online to run the assistant' }
             }

@@ -42,7 +42,7 @@ describe('schema migration v26 to v27', () => {
 
         const columns = db.prepare('PRAGMA table_info(tasks)').all() as Array<{ name: string }>
         expect(columns.some((column) => column.name === 'pull_request')).toBe(true)
-        expect((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(34)
+        expect((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(35)
 
         // The pre-existing card survives, with no pull request attached.
         const kept = migrated.tasks.get('task-keep')

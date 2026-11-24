@@ -450,7 +450,9 @@ export class ApiMachineClient {
      * Where a workspace user's assistant runs, and which of the directories
      * the hub asked for it may reach. The id becomes a path segment, so it is
      * held to a plain token; an add-dir outside the workspace roots is dropped
-     * the same way a spawn directory outside them is refused.
+     * the same way a spawn directory outside them is refused. So is one this
+     * machine does not have: a person's directories are registered once for
+     * every machine, and the assistant may run on any of them.
      */
     private async resolveAssistantSpawn(raw: unknown): Promise<
         { directory: string; workspaceUserId: string; addDirs: string[] } | null | 'invalid'
@@ -465,9 +467,13 @@ export class ApiMachineClient {
         for (const dir of Array.isArray(addDirs) ? addDirs : []) {
             if (typeof dir !== 'string' || !isAbsolute(dir)) continue
             const resolved = await this.resolveForWorkspaceCheck(dir)
-            if (this.isWithinWorkspaceRoots(resolved) && !allowed.includes(resolved)) {
-                allowed.push(resolved)
+            if (!this.isWithinWorkspaceRoots(resolved) || allowed.includes(resolved)) continue
+            const isDirectory = await stat(resolved).then((entry) => entry.isDirectory(), () => false)
+            if (!isDirectory) {
+                logger.debug(`[API MACHINE] Assistant add-dir not on this machine, skipped: ${dir}`)
+                continue
             }
+            allowed.push(resolved)
         }
         return {
             directory: join(configuration.happyHomeDir, 'assistant', workspaceUserId),

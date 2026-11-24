@@ -390,6 +390,19 @@ export function setAssistantAgent(db: Database, workspaceUserId: string, namespa
     return result.changes > 0
 }
 
+/** The machine the person pinned their assistant to; null means automatic. */
+export function getAssistantMachineId(db: Database, workspaceUserId: string, namespace: string): string | null {
+    const row = db.prepare('SELECT assistant_machine_id FROM workspace_users WHERE id = ? AND namespace = ?')
+        .get(workspaceUserId, namespace) as { assistant_machine_id: string | null } | null
+    return row?.assistant_machine_id || null
+}
+
+export function setAssistantMachineId(db: Database, workspaceUserId: string, namespace: string, machineId: string | null): boolean {
+    const result = db.prepare('UPDATE workspace_users SET assistant_machine_id = ? WHERE id = ? AND namespace = ?')
+        .run(machineId, workspaceUserId, namespace)
+    return result.changes > 0
+}
+
 // --- Questions for later (schema v31) -----------------------------------------
 
 type DbQuestionRow = {

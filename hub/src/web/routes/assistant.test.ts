@@ -5,7 +5,7 @@ import type { WebAppEnv } from '../middleware/auth'
 import { createAuthMiddleware } from '../middleware/auth'
 import { Store } from '../../store'
 import type { SyncEvent } from '../../sync/syncEngine'
-import type { AssistantService } from '../../sync/assistantService'
+import { AssistantService } from '../../sync/assistantService'
 import { assistantSystemNoticeKind } from '@hapi/protocol'
 import { createAssistantRoutes } from './assistant'
 
@@ -236,5 +236,52 @@ describe('assistant question routes', () => {
         const retry = await answer(question.id, 'kubelet')
         expect(await retry.json()).toMatchObject({ reworkError: null, question: { status: 'overridden', answer: 'kubelet' } })
         expect(sent).toHaveLength(1)
+    })
+})
+
+describe('assistant machine route', () => {
+    function withMachines(online: string[], stops: string[]) {
+        const service = new AssistantService({
+            store,
+            getSession: () => undefined,
+            listSessions: () => [],
+            onlineMachineIds: () => online,
+            spawn: async () => ({ type: 'error', message: 'unused' }),
+            reopen: async () => ({ type: 'error', message: 'unused' }),
+            stop: async (id) => { stops.push(id) },
+            send: async () => {}
+        })
+        app = new Hono<WebAppEnv>()
+        app.use('*', createAuthMiddleware(JWT_SECRET))
+        app.route('/api', createAssistantRoutes({ store, publish: (event) => events.push(event), getAssistantService: () => service }))
+    }
+
+    const put = async (body: unknown) => app.request('/api/assistant/machine', {
+        method: 'PUT', headers: await headers(), body: JSON.stringify(body)
+    })
+
+    it('pins the assistant to an online machine and back to automatic', async () => {
+        withMachines(['m-1', 'm-2'], [])
+
+        const pinned = await put({ workspaceUserId: kaiId, machineId: 'm-2' })
+        expect(pinned.status).toBe(200)
+        expect(await pinned.json()).toEqual({ sessionId: null, agent: 'claude', machineId: 'm-2', sessionMachineId: null })
+        expect(store.assistant.getMachineId(kaiId, 'default')).toBe('m-2')
+
+        const session = await app.request(`/api/assistant/session?workspaceUser=${kaiId}`, { headers: await headers() })
+        expect(await session.json()).toMatchObject({ machineId: 'm-2' })
+
+        const auto = await put({ workspaceUserId: kaiId, machineId: null })
+        expect(await auto.json()).toMatchObject({ machineId: null })
+        expect(store.assistant.getMachineId(kaiId, 'default')).toBeNull()
+    })
+
+    it('refuses an offline machine, a stranger and a malformed body', async () => {
+        withMachines(['m-1'], [])
+
+        expect((await put({ workspaceUserId: kaiId, machineId: 'm-gone' })).status).toBe(409)
+        expect(store.assistant.getMachineId(kaiId, 'default')).toBeNull()
+        expect((await put({ workspaceUserId: 'nobody', machineId: 'm-1' })).status).toBe(404)
+        expect((await put({ workspaceUserId: kaiId })).status).toBe(400)
     })
 })

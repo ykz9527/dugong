@@ -14,11 +14,13 @@ import {
     getAssistantMemory,
     getAssistantMemoryByName,
     getAssistantAgent,
+    getAssistantMachineId,
     getAssistantSessionId,
     hasAssistantGrant,
     listAssistantGrants,
     listAssistantMemories,
     setAssistantAgent,
+    setAssistantMachineId,
     setAssistantSessionId,
     undoAssistantMemory,
     updateAssistantMemory,
@@ -131,5 +133,13 @@ export class AssistantStore {
 
     setAgent(workspaceUserId: string, namespace: string, agent: AssistantAgent): boolean {
         return setAssistantAgent(this.db, workspaceUserId, namespace, agent)
+    }
+
+    getMachineId(workspaceUserId: string, namespace: string): string | null {
+        return getAssistantMachineId(this.db, workspaceUserId, namespace)
+    }
+
+    setMachineId(workspaceUserId: string, namespace: string, machineId: string | null): boolean {
+        return setAssistantMachineId(this.db, workspaceUserId, namespace, machineId)
     }
 }

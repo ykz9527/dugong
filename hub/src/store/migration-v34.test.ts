@@ -33,7 +33,7 @@ describe('schema migration v33 to v34', () => {
 
         const migrated = new Store(dbPath)
         const db = (migrated as unknown as { db: Database }).db
-        expect((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(34)
+        expect((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(35)
         expect(migrated.taskSchedules.get(task.id)?.sessionMode).toBe('fresh')
         migrated.close()
     })

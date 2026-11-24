@@ -4,6 +4,9 @@ import { readableError, type ApiClient } from '@/api/client'
 import { StatusDot, taskColumnTone } from '@/components/Tasks/StatusDot'
 import { CloseIcon } from '@/components/icons'
 import { useActiveWorkspaceUser } from '@/hooks/queries/useWorkspaceUsers'
+import { useMachines } from '@/hooks/queries/useMachines'
+import { getMachineTitle, useMachineLabels } from '@/hooks/useMachineLabels'
+import { useMachinePathsExists } from '@/hooks/useMachinePathsExists'
 import {
     useAnswerAssistantQuestion,
     useAssistantActions,
@@ -94,6 +97,7 @@ export function AssistantPanel(props: {
                     key={workspaceUserId}
                     api={props.api}
                     workspaceUserId={workspaceUserId}
+                    paths={activeUser?.paths ?? NO_PATHS}
                     task={props.task}
                     titleId={titleId}
                     onClose={props.onClose}
@@ -111,7 +115,22 @@ export function AssistantPanel(props: {
     )
 }
 
+const NO_PATHS: string[] = []
+
 type PanelTab = 'chat' | 'memory' | 'questions'
+
+/** Value of the "Auto" machine option; machine ids are never empty. */
+const AUTO_MACHINE = ''
+
+type MachineChoice = {
+    /** Pinned machine id, or null for automatic. */
+    value: string | null
+    options: Array<{ id: string; label: string }>
+    /** Where an automatic assistant runs now, if known. */
+    autoLabel: string | null
+    onChange: (machineId: string | null) => void
+    pending: boolean
+}
 
 const PANEL_TABS: PanelTab[] = ['chat', 'memory', 'questions']
 
@@ -119,6 +138,8 @@ const PANEL_TABS: PanelTab[] = ['chat', 'memory', 'questions']
 function tabIds(base: string, tab: PanelTab): { tab: string; panel: string } {
     return { tab: `${base}-tab-${tab}`, panel: `${base}-panel-${tab}` }
 }
+
+const selectClass = 'border-0 border-b border-[var(--app-rule)] bg-transparent py-0.5 text-xs font-semibold text-[var(--app-fg)] focus:outline-none focus-visible:border-[var(--app-accent)] disabled:opacity-50'
 
 function PanelHeader(props: {
     titleId: string
@@ -128,6 +149,7 @@ function PanelHeader(props: {
     openQuestions: number
     onClose: () => void
     agent?: { value: AssistantAgent; onChange: (agent: AssistantAgent) => void; pending: boolean }
+    machine?: MachineChoice
 }) {
     const { t } = useTranslation()
     const tabClass = (active: boolean) =>
@@ -144,12 +166,31 @@ function PanelHeader(props: {
                         value={props.agent.value}
                         disabled={props.agent.pending}
                         onChange={(event) => props.agent?.onChange(event.target.value as AssistantAgent)}
-                        className="border-0 border-b border-[var(--app-rule)] bg-transparent py-0.5 text-xs font-semibold text-[var(--app-fg)] focus:outline-none focus-visible:border-[var(--app-accent)] disabled:opacity-50"
+                        className={selectClass}
                         title={t('assistant.agent.hint')}
                         aria-label={t('assistant.agent.hint')}
                     >
                         {ASSISTANT_AGENTS.map((agent) => (
                             <option key={agent} value={agent}>{getFlavorLabel(agent)}</option>
+                        ))}
+                    </select>
+                ) : null}
+                {props.machine ? (
+                    <select
+                        value={props.machine.value ?? AUTO_MACHINE}
+                        disabled={props.machine.pending}
+                        onChange={(event) => props.machine?.onChange(event.target.value || null)}
+                        className={`${selectClass} max-w-[10rem] truncate`}
+                        title={t('assistant.machine.hint')}
+                        aria-label={t('assistant.machine.hint')}
+                    >
+                        <option value={AUTO_MACHINE}>
+                            {props.machine.autoLabel
+                                ? t('assistant.machine.autoOn', { machine: props.machine.autoLabel })
+                                : t('assistant.machine.auto')}
+                        </option>
+                        {props.machine.options.map((option) => (
+                            <option key={option.id} value={option.id}>{option.label}</option>
                         ))}
                     </select>
                 ) : null}
@@ -193,6 +234,7 @@ function PanelHeader(props: {
 function PanelBody(props: {
     api: ApiClient
     workspaceUserId: string
+    paths: string[]
     task: Task | null
     titleId: string
     onClose: () => void
@@ -200,7 +242,7 @@ function PanelBody(props: {
     const { t } = useTranslation()
     const [tab, setTab] = useState<PanelTab>('chat')
     const assistant = useAssistantSessionId(props.api, props.workspaceUserId)
-    const { sessionId, agent, setSessionId, setAgent, refresh: refreshSessionId } = assistant
+    const { sessionId, agent, machineId, sessionMachineId, setSessionId, setAgent, setMachine, refresh: refreshSessionId } = assistant
     const [agentPending, setAgentPending] = useState(false)
     const [agentError, setAgentError] = useState<string | null>(null)
     const changeAgent = (next: AssistantAgent) => {
@@ -211,6 +253,32 @@ function PanelBody(props: {
             .catch((error: unknown) => setAgentError(readableError(error)))
             .finally(() => setAgentPending(false))
     }
+
+    // Machines: the online ones, plus the pinned one when it is down, so the
+    // select still says where the assistant is meant to run.
+    const { machines } = useMachines(props.api, true)
+    const machineLabels = useMachineLabels(machines)
+    const labelOf = (id: string) => machineLabels[id] ?? id.slice(0, 8)
+    const machineOptions = machines.map((machine) => ({ id: machine.id, label: getMachineTitle(machine) }))
+    if (machineId && !machines.some((machine) => machine.id === machineId)) {
+        machineOptions.push({ id: machineId, label: t('assistant.machine.offline', { machine: labelOf(machineId) }) })
+    }
+    const [machinePending, setMachinePending] = useState(false)
+    const [machineError, setMachineError] = useState<string | null>(null)
+    const changeMachine = (next: string | null) => {
+        if (next === machineId || machinePending) return
+        setMachinePending(true)
+        setMachineError(null)
+        void setMachine(next)
+            .catch((error: unknown) => setMachineError(readableError(error)))
+            .finally(() => setMachinePending(false))
+    }
+    // The person's directories are registered once for every machine; the
+    // runner passes on only those its machine has, and this says which not.
+    const assistantMachineId = machineId ?? sessionMachineId
+    const { pathExistence } = useMachinePathsExists(props.api, assistantMachineId, props.paths)
+    const missingPaths = props.paths.filter((path) => pathExistence[path] === false)
+
     const { memories } = useAssistantMemories(props.api, props.workspaceUserId)
     const grants = useAssistantGrants(props.api, props.workspaceUserId)
     const actions = useAssistantActions(props.api, props.workspaceUserId)
@@ -276,6 +344,13 @@ function PanelBody(props: {
                 openQuestions={openQuestions}
                 onClose={props.onClose}
                 agent={{ value: agent, onChange: changeAgent, pending: agentPending }}
+                machine={{
+                    value: machineId,
+                    options: machineOptions,
+                    autoLabel: !machineId && sessionMachineId ? labelOf(sessionMachineId) : null,
+                    onChange: changeMachine,
+                    pending: machinePending
+                }}
             />
             <div className="flex items-center gap-2 border-b border-[var(--app-border)] px-4 py-2 text-[13px]">
                 <span className="pw-eyebrow shrink-0 text-[var(--app-hint)]">{t('assistant.viewing')}</span>
@@ -327,6 +402,21 @@ function PanelBody(props: {
                 </p>
             ) : null}
 
+            {machineError ? (
+                <p role="alert" className="border-b border-[var(--app-border)] px-4 py-2 text-xs text-[var(--app-accent)]">
+                    {t('assistant.machine.error', { error: machineError })}
+                </p>
+            ) : null}
+
+            {tab === 'chat' && missingPaths.length > 0 ? (
+                <p className="border-b border-[var(--app-border)] px-4 py-2 text-xs text-[var(--app-badge-warning-text)]">
+                    {t('assistant.machine.missingPaths', {
+                        machine: labelOf(assistantMachineId ?? ''),
+                        paths: missingPaths.join(', ')
+                    })}
+                </p>
+            ) : null}
+
             {tab === 'chat' && switched ? (
                 <p className="border-b border-[var(--app-border)] px-4 py-2 text-xs text-[var(--app-hint)]">
                     {task
@@ -360,7 +450,7 @@ function PanelBody(props: {
                     </div>
                 ) : tab === 'chat' ? (
                     <AssistantChat
-                        key={agent}
+                        key={`${agent}:${machineId ?? AUTO_MACHINE}`}
                         api={props.api}
                         workspaceUserId={props.workspaceUserId}
                         sessionId={sessionId}

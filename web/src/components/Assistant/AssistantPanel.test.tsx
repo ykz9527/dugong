@@ -29,12 +29,22 @@ function makeMemory(overrides: Partial<AssistantMemory> = {}): AssistantMemory {
     }
 }
 
+function makeMachine(id: string, host: string) {
+    return {
+        id, namespace: 'default', seq: 1, createdAt: 1, updatedAt: 1, active: true, activeAt: 1,
+        metadata: { host, platform: 'linux', happyCliVersion: '1' },
+        metadataVersion: 1, runnerState: null, runnerStateVersion: 1
+    }
+}
+
 function makeApi(overrides: Partial<Record<keyof ApiClient, unknown>> = {}): ApiClient {
     return {
         getWorkspaceUsers: vi.fn(async () => ({
             workspaceUsers: [{ id: 'user-kai', namespace: 'default', name: 'Kai', paths: ['/srv'], createdAt: 1, updatedAt: 1 }]
         })),
-        getAssistantSession: vi.fn(async () => ({ sessionId: null, agent: 'claude' })),
+        getAssistantSession: vi.fn(async () => ({ sessionId: null, agent: 'claude', machineId: null, sessionMachineId: null })),
+        getMachines: vi.fn(async () => ({ machines: [makeMachine('m-71', '37-1'), makeMachine('m-72', '37-2')] })),
+        checkMachinePathsExists: vi.fn(async () => ({ exists: {} })),
         getAssistantMemories: vi.fn(async () => ({ memories: [makeMemory()] })),
         getAssistantGrants: vi.fn(async () => ({ grants: [] })),
         getAssistantQuestions: vi.fn(async () => ({ questions: [] })),
@@ -144,5 +154,49 @@ describe('AssistantPanel', () => {
         expect(document.activeElement).toBe(sheet)
         fireEvent.keyDown(await within(sheet).findByRole('tab', { name: 'Chat' }), { key: 'Escape' })
         expect(onClose).toHaveBeenCalledTimes(1)
+    })
+
+    it('moves the assistant to the machine picked beside the agent', async () => {
+        const setAssistantMachine = vi.fn(async () => ({ sessionId: null, agent: 'claude', machineId: 'm-71', sessionMachineId: null }))
+        const api = makeApi({
+            // No session id: a live one would open the chat's event stream.
+            getAssistantSession: vi.fn(async () => ({ sessionId: null, agent: 'claude', machineId: null, sessionMachineId: 'm-72' })),
+            setAssistantMachine
+        })
+        renderPanel(api)
+
+        const select = await screen.findByRole('combobox', { name: /Machine the assistant runs on/ }) as HTMLSelectElement
+        await waitFor(() => expect([...select.options].map((option) => option.text)).toEqual(['Auto · 37-2', '37-1', '37-2']))
+        fireEvent.change(select, { target: { value: 'm-71' } })
+        await waitFor(() => expect(setAssistantMachine).toHaveBeenCalledWith({ workspaceUserId: 'user-kai', machineId: 'm-71' }))
+        await waitFor(() => expect(select.value).toBe('m-71'))
+    })
+
+    it('keeps an offline pinned machine in view, and says why a switch failed', async () => {
+        const body = '{"error":"That machine is offline"}'
+        const api = makeApi({
+            getAssistantSession: vi.fn(async () => ({ sessionId: null, agent: 'claude', machineId: 'm-gone-1234', sessionMachineId: null })),
+            setAssistantMachine: vi.fn(async () => {
+                throw new ApiError(`HTTP 409 Conflict: ${body}`, 409, undefined, body)
+            })
+        })
+        renderPanel(api)
+
+        const select = await screen.findByRole('combobox', { name: /Machine the assistant runs on/ }) as HTMLSelectElement
+        await waitFor(() => expect(select.value).toBe('m-gone-1234'))
+        expect(select.selectedOptions[0]?.text).toBe('m-gone-1 (offline)')
+        fireEvent.change(select, { target: { value: 'm-72' } })
+        expect((await screen.findByRole('alert')).textContent).toBe('Could not switch machine: That machine is offline')
+    })
+
+    it('names the directories the assistant\'s machine does not have', async () => {
+        const checkMachinePathsExists = vi.fn(async () => ({ exists: { '/srv': false } }))
+        renderPanel(makeApi({
+            getAssistantSession: vi.fn(async () => ({ sessionId: null, agent: 'claude', machineId: 'm-71', sessionMachineId: null })),
+            checkMachinePathsExists
+        }))
+
+        expect(await screen.findByText('37-1 does not have /srv. The assistant cannot see these directories there.')).toBeTruthy()
+        expect(checkMachinePathsExists).toHaveBeenCalledWith('m-71', ['/srv'])
     })
 })

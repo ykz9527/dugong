@@ -214,7 +214,14 @@ export const SendAssistantMessageRequestSchema = z.object({
 })
 export type SendAssistantMessageRequest = z.infer<typeof SendAssistantMessageRequestSchema>
 export type SendAssistantMessageResponse = { sessionId: string; contextSent: boolean }
-export type AssistantSessionResponse = { sessionId: string | null; agent: AssistantAgent }
+export type AssistantSessionResponse = {
+    sessionId: string | null
+    agent: AssistantAgent
+    /** The machine the person pinned the assistant to; null picks one automatically. */
+    machineId: string | null
+    /** Where the conversation that `sessionId` names lives, if known. */
+    sessionMachineId: string | null
+}
 
 /** The coding agents that can back the assistant; each person picks one. */
 export const ASSISTANT_AGENTS = ['claude', 'codex'] as const
@@ -230,6 +237,16 @@ export const SetAssistantAgentRequestSchema = z.object({
     agent: z.enum(ASSISTANT_AGENTS)
 })
 export type SetAssistantAgentRequest = z.infer<typeof SetAssistantAgentRequestSchema>
+
+/**
+ * Pin the person's assistant to a machine, or `null` for automatic. Each
+ * machine keeps its own conversation; memory, questions and grants are shared.
+ */
+export const SetAssistantMachineRequestSchema = z.object({
+    workspaceUserId: z.string().min(1),
+    machineId: z.string().min(1).nullable()
+})
+export type SetAssistantMachineRequest = z.infer<typeof SetAssistantMachineRequestSchema>
 
 /**
  * The assistant's tools that act on other work: each asks the person first.

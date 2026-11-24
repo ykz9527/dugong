@@ -39,7 +39,7 @@ describe('schema migration v28 to v29', () => {
 
         expect(columns(db, 'push_subscriptions')).toContain('workspace_user_id')
         expect(columns(db, 'fcm_devices')).toContain('workspace_user_id')
-        expect(userVersion(db)).toBe(34)
+        expect(userVersion(db)).toBe(35)
 
         store.close()
     })
@@ -61,7 +61,7 @@ describe('schema migration v28 to v29', () => {
         legacy.close()
 
         const migrated = new Store(dbPath)
-        expect(userVersion(internalDb(migrated))).toBe(34)
+        expect(userVersion(internalDb(migrated))).toBe(35)
 
         // Null, not "nobody": a device registered before the column existed
         // made no claim about whose work it wants, and muting it would be a

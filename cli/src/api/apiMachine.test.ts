@@ -613,6 +613,56 @@ describe('ApiMachineClient SpawnHappySession handler', () => {
     })
 })
 
+describe('ApiMachineClient assistant spawn', () => {
+    let workspaceRoot: string
+
+    beforeEach(() => {
+        ioMock.mockReset()
+        workspaceRoot = realpathSync(mkdtempSync(join(tmpdir(), 'hapi-machine-assistant-')))
+    })
+
+    afterEach(() => {
+        rmSync(workspaceRoot, { recursive: true, force: true })
+    })
+
+    it('passes on only the person\'s directories this machine has', async () => {
+        const present = join(workspaceRoot, 'repo')
+        mkdirSync(present)
+        const file = join(workspaceRoot, 'notes.txt')
+        writeFileSync(file, '')
+        const machine = makeMachine('machine-assistant-1')
+        const client = new ApiMachineClient('cli-token', machine, [workspaceRoot])
+        const spawnSession = vi.fn(async () => ({ type: 'success' as const, sessionId: 'session-1' }))
+        client.setRPCHandlers({
+            spawnSession,
+            stopSession: vi.fn(async () => 'stopped' as const),
+            requestShutdown: vi.fn(),
+            removeWorktree: vi.fn(async () => ({ outcome: 'removed' as const, branch: 'skipped' as const }))
+        })
+
+        try {
+            const manager = (client as unknown as {
+                rpcHandlerManager: { handleRequest: (req: { method: string; params: string }) => Promise<string> }
+            }).rpcHandlerManager
+            const raw = await manager.handleRequest({
+                method: `${machine.id}:spawn-happy-session`,
+                params: JSON.stringify({
+                    directory: '(assistant)',
+                    agent: 'claude',
+                    assistant: { workspaceUserId: 'wu-1', addDirs: [present, join(workspaceRoot, 'missing'), file] }
+                })
+            })
+
+            expect(JSON.parse(raw)).toEqual({ type: 'success', sessionId: 'session-1' })
+            expect(spawnSession).toHaveBeenCalledWith(expect.objectContaining({
+                assistant: { workspaceUserId: 'wu-1', addDirs: [present] }
+            }))
+        } finally {
+            client.shutdown()
+        }
+    })
+})
+
 describe('ApiMachineClient keepAlive lifecycle', () => {
     beforeEach(() => {
         vi.useFakeTimers()
