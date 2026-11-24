@@ -264,14 +264,15 @@ describe('claudeRemoteLauncher launch-failure recovery', () => {
         await claudeRemoteLauncher(session);
         const elapsed = Date.now() - start;
 
-        // 3 consecutive immediate failures hit the cap and drop the message
-        // on call 3 (2 backoff waits happen first, between calls 1->2 and
-        // 2->3; the cap-triggered drop on call 3 does not itself back off).
-        // Call 4 observes the drop banner and ends the test. This is an
-        // exact count, not a loose upper bound -- if the cap value or the
-        // reachedReadyThisAttempt gating regresses, this number changes.
-        expect(callCount).toBe(4);
-        expect(elapsed).toBeGreaterThanOrEqual(2 * BACKOFF_MS);
+        // 6 consecutive immediate failures hit the cap and drop the message
+        // on call 6 (5 backoff waits happen first, doubling each time:
+        // 1x, 2x, 4x, 8x, 16x the base; the cap-triggered drop on call 6
+        // does not itself back off). Call 7 observes the drop banner and
+        // ends the test. This is an exact count, not a loose upper bound --
+        // if the cap value or the reachedReadyThisAttempt gating regresses,
+        // this number changes.
+        expect(callCount).toBe(7);
+        expect(elapsed).toBeGreaterThanOrEqual(31 * BACKOFF_MS);
         expect(elapsed).toBeLessThan(5_000);
 
         const messages = client.sendSessionEvent.mock.calls.map(([event]: any[]) => event);
@@ -279,7 +280,7 @@ describe('claudeRemoteLauncher launch-failure recovery', () => {
             (event: any) => typeof event.message === 'string' && event.message.includes('Dropping the queued message')
         );
         expect(dropBanner).toBeDefined();
-        expect(dropBanner!.message).toContain('3 times in a row');
+        expect(dropBanner!.message).toContain('6 times in a row');
     });
 
     it('resets the immediate-failure streak once onReady fires even if that same attempt later throws', async () => {
@@ -323,12 +324,12 @@ describe('claudeRemoteLauncher launch-failure recovery', () => {
         // call 1 = 1 immediate failure (streak -> 1)
         // call 2 = reaches onReady, then throws -> streak resets to 0 (NOT
         //   counted as an immediate failure despite throwing)
-        // calls 3-5 = a fresh streak of 3 immediate failures -> cap fires on
-        //   call 5, drop banner sent
-        // call 6 = observes the drop banner and ends the test
+        // calls 3-8 = a fresh streak of 6 immediate failures -> cap fires on
+        //   call 8, drop banner sent
+        // call 9 = observes the drop banner and ends the test
         // This is an exact count: if the reset in call 2 did not happen, the
-        // cap would fire on call 4 instead (5 total calls, not 6).
-        expect(callCount).toBe(6);
+        // cap would fire on call 6 instead (7 total calls, not 9).
+        expect(callCount).toBe(9);
     });
 
     it('resets the immediate-failure streak on a successful attempt that delivers a message but never reaches onReady', async () => {
@@ -387,14 +388,14 @@ describe('claudeRemoteLauncher launch-failure recovery', () => {
         // call 1, 2 = 2 immediate failures (streak -> 2)
         // call 3 = delivers /clear, completes successfully without onReady ->
         //   streak resets to 0
-        // calls 4-6 = a fresh streak of 3 immediate failures -> cap fires on
-        //   call 6, drop banner sent
-        // call 7 = observes the drop banner and ends the test
+        // calls 4-9 = a fresh streak of 6 immediate failures -> cap fires on
+        //   call 9, drop banner sent
+        // call 10 = observes the drop banner and ends the test
         // This is an exact count: if call 3 did not reset the streak, the cap
-        // would fire on call 4 instead (5 total calls, not 7), and the drop
-        // banner would falsely claim "3 times in a row" after just 1 failure
+        // would fire on call 7 instead (8 total calls, not 10), and the drop
+        // banner would falsely claim "6 times in a row" after just 4 failures
         // past the successful /clear.
-        expect(callCount).toBe(7);
+        expect(callCount).toBe(10);
     });
 
     it('does not livelock when an isolated message repeatedly hits a deterministic launch failure', async () => {

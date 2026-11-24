@@ -91,21 +91,27 @@ function findWindowsClaudePath(): string | null {
     return null
 }
 
+type GlobalClaudeLookup =
+    | { path: string }
+    | { path: null; versionFailure: unknown }
+
 /**
  * Try to find globally installed Claude CLI
  * On Windows: Returns absolute path to claude.exe (for shell: false)
  * On Unix: Returns 'claude' if command works, or actual path via which
  * Runs from home directory to avoid local cwd side effects
  */
-function findGlobalClaudePath(): string | null {
+function findGlobalClaudePath(): GlobalClaudeLookup {
     const homeDir = homedir()
 
     // Windows: Always return absolute path for shell: false compatibility
     if (process.platform === 'win32') {
-        return findWindowsClaudePath()
+        const found = findWindowsClaudePath()
+        return found ? { path: found } : { path: null, versionFailure: null }
     }
 
     // Unix: Check if 'claude' command works directly from home dir
+    let versionFailure: unknown = null
     try {
         execSync('claude --version', {
             encoding: 'utf8',
@@ -113,9 +119,9 @@ function findGlobalClaudePath(): string | null {
             cwd: homeDir
         })
         logger.debug('[Claude SDK] Global claude command available')
-        return 'claude'
-    } catch {
-        // claude command not available globally
+        return { path: 'claude' }
+    } catch (error) {
+        versionFailure = error
     }
 
     // FALLBACK for Unix: try which to get actual path
@@ -127,13 +133,35 @@ function findGlobalClaudePath(): string | null {
         }).trim()
         if (result && existsSync(result)) {
             logger.debug(`[Claude SDK] Found global claude path via which: ${result}`)
-            return result
+            return { path: result }
         }
     } catch {
         // which didn't find it
     }
 
-    return null
+    return { path: null, versionFailure }
+}
+
+/**
+ * Say why `claude --version` failed. The shell exits 127 when the command is
+ * missing; anything else means claude exists but did not run (e.g. it was
+ * killed mid-start), and calling that "not found" sends people chasing an
+ * install problem that isn't there.
+ */
+function describeClaudeLookupFailure(versionFailure: unknown): string {
+    const failure = versionFailure as { status?: number | null; signal?: string | null; code?: string } | null
+    const notFound = failure === null
+        || failure?.status === 127
+        || failure?.code === 'ENOENT'
+    if (notFound) {
+        return 'Claude Code CLI not found on PATH. Install Claude Code or set DUGONG_CLAUDE_PATH.'
+    }
+    const how = failure?.signal
+        ? `was killed by ${failure.signal}`
+        : typeof failure?.status === 'number'
+            ? `exited with code ${failure.status}`
+            : `failed (${versionFailure instanceof Error ? versionFailure.message : String(versionFailure)})`
+    return `Claude Code CLI did not start: \`claude --version\` ${how}.`
 }
 
 /**
@@ -160,11 +188,11 @@ export function getDefaultClaudeCodePath(): string {
     }
 
     // Find global claude
-    const globalPath = findGlobalClaudePath()
-    if (!globalPath) {
-        throw new Error('Claude Code CLI not found on PATH. Install Claude Code or set DUGONG_CLAUDE_PATH.')
+    const lookup = findGlobalClaudePath()
+    if (lookup.path === null) {
+        throw new Error(describeClaudeLookupFailure(lookup.versionFailure))
     }
-    return globalPath
+    return lookup.path
 }
 
 /**

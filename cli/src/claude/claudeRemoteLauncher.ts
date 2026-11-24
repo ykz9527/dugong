@@ -28,22 +28,24 @@ interface PermissionsField {
 }
 
 // If claudeRemote() throws before it ever reaches onReady (spawn failure,
-// invalid model/args, auth failure, resume-anchor rejection, ...), the failure
-// is almost certainly deterministic: respawning immediately just repeats the
-// same failure. MAX_IMMEDIATE_RESPAWN_FAILURES caps consecutive such failures
-// before this loop drops the message that keeps triggering them instead of
-// respawning forever, and getRespawnBackoffMs() paces the retries in between.
-// The streak resets whenever an attempt reaches onReady, or once the message
-// is dropped, so a later unrelated failure gets its own fresh budget. Only
-// the one message is given up on -- the session/process itself is not ended.
-const MAX_IMMEDIATE_RESPAWN_FAILURES = 3;
+// invalid model/args, auth failure, resume-anchor rejection, ...), respawning
+// at once usually repeats the same failure. But some causes pass on their own
+// within seconds: every `claude` process on the machine killed at once, a
+// Claude Code self-update swapping its binary. So retries back off
+// exponentially (getRespawnBackoffMs() doubled per failure: 1, 2, 4, 8, 16 s
+// by default) and only after MAX_IMMEDIATE_RESPAWN_FAILURES consecutive
+// failures (~31 s) does this loop drop the message that keeps triggering
+// them instead of respawning forever. The streak resets whenever an attempt
+// reaches onReady, or once the message is dropped, so a later unrelated
+// failure gets its own fresh budget. Only the one message is given up on --
+// the session/process itself is not ended.
+const MAX_IMMEDIATE_RESPAWN_FAILURES = 6;
 
-function getRespawnBackoffMs(): number {
+function getRespawnBackoffMs(failureCount: number): number {
     const raw = process.env.CLAUDE_REMOTE_RESPAWN_BACKOFF_MS;
-    if (raw === undefined) return 1000;
-    const parsed = Number.parseInt(raw, 10);
-    if (Number.isNaN(parsed) || parsed < 0) return 1000;
-    return parsed;
+    const parsed = raw === undefined ? NaN : Number.parseInt(raw, 10);
+    const base = Number.isNaN(parsed) || parsed < 0 ? 1000 : parsed;
+    return base * 2 ** Math.max(0, failureCount - 1);
 }
 
 class ClaudeRemoteLauncher extends RemoteLauncherBase {
@@ -641,8 +643,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             immediateFailureCount = 0;
                         } else {
                             restoreInFlightMessage();
-                            session.client.sendSessionEvent({ type: 'message', message: `Process exited unexpectedly: ${detail}` });
-                            await this.respawnBackoff(getRespawnBackoffMs(), controller.signal);
+                            const backoffMs = getRespawnBackoffMs(immediateFailureCount);
+                            const retryNote = backoffMs >= 1000 ? ` Retrying in ${Math.round(backoffMs / 1000)}s.` : '';
+                            session.client.sendSessionEvent({ type: 'message', message: `Process exited unexpectedly: ${detail}${retryNote}` });
+                            await this.respawnBackoff(backoffMs, controller.signal);
                             continue;
                         }
                     } else {

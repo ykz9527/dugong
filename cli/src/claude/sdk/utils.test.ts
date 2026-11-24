@@ -156,4 +156,30 @@ describe('getDefaultClaudeCodePath', () => {
 
         expect(getDefaultClaudeCodePath()).toBe(executable)
     })
+    // 11-23: every `claude` on the host was killed; the retry's
+    // `claude --version` died too and the banner wrongly said "not found".
+    it('reports a claude that exists but did not run, not "not found"', async () => {
+        setPlatform('linux')
+        execSyncMock.mockImplementation((command: string) => {
+            if (command === 'claude --version') {
+                throw Object.assign(new Error('Command failed'), { status: 143, signal: null })
+            }
+            throw Object.assign(new Error('Command failed'), { status: 1, signal: null })
+        })
+        const { getDefaultClaudeCodePath } = await import('./utils')
+
+        expect(() => getDefaultClaudeCodePath()).toThrow(
+            'Claude Code CLI did not start: `claude --version` exited with code 143.'
+        )
+    })
+
+    it('says "not found" when the shell cannot find claude', async () => {
+        setPlatform('linux')
+        execSyncMock.mockImplementation(() => {
+            throw Object.assign(new Error('Command failed'), { status: 127, signal: null })
+        })
+        const { getDefaultClaudeCodePath } = await import('./utils')
+
+        expect(() => getDefaultClaudeCodePath()).toThrow('Claude Code CLI not found on PATH.')
+    })
 })
