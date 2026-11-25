@@ -12,9 +12,6 @@ describe('DEFAULT_COMPOSER_TOOLBAR_LAYOUT', () => {
             'attachment',
             'settings',
             'expand',
-            'model',
-            'effort',
-            'permission',
             'terminal',
             'switch',
             'voiceMic',
@@ -72,27 +69,25 @@ describe('normalizeComposerToolbarLayout', () => {
     it('reorders across a hidden split boundary in single-column modes', () => {
         const layout = normalizeComposerToolbarLayout({
             mode: 'right',
-            left: ['attachment', 'settings', 'model', 'effort', 'terminal'],
+            left: ['attachment', 'settings', 'terminal'],
             right: ['abort', 'switch', 'voiceMic', 'scratchlist', 'schedule'],
         })
-        const result = moveComposerToolbarItemInSingleLayout(layout, 'attachment', 7)
+        const result = moveComposerToolbarItemInSingleLayout(layout, 'attachment', 4)
 
-        // `attachment` lands at index 7, which is what this exercises; items the
-        // input layout omitted (expand, permission) are appended by normalize.
+        // `attachment` lands at index 4, which is what this exercises; the item
+        // the input layout omitted (expand) is appended by normalize.
         const order = [...result.left, ...result.right]
-        expect(order.indexOf('attachment')).toBe(7)
-        expect(order.slice(0, 11)).toEqual([
+        expect(order.indexOf('attachment')).toBe(4)
+        expect(order).toEqual([
             'settings',
-            'model',
-            'effort',
             'terminal',
             'expand',
-            'permission',
             'abort',
             'attachment',
             'switch',
             'voiceMic',
             'scratchlist',
+            'schedule',
         ])
         expect(result.left).toHaveLength(layout.left.length)
     })

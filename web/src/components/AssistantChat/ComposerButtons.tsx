@@ -8,20 +8,7 @@ import { useFue } from '@/lib/use-fue'
 import { FueCallout, FueDot } from '@/components/Fue'
 import { Children, isValidElement, useRef, useState, type ReactElement, type ReactNode, type Ref } from 'react'
 import { useComposerToolbarLayout, type ComposerToolbarItemId, type ComposerToolbarLayout } from '@/hooks/useComposerToolbarLayout'
-import { useNarrowViewport } from '@/hooks/useNarrowViewport'
 import type { ComposerSendIntent } from '@/lib/messageDelivery'
-
-function PermissionIcon() {
-    return (
-        <svg
-            xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24"
-            fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-            aria-hidden="true"
-        >
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-        </svg>
-    )
-}
 
 function ToolbarItemSlot(props: { item: ComposerToolbarItemId; children: ReactNode }) {
     return <>{props.children}</>
@@ -52,10 +39,6 @@ export function getComposerToolbarJustifyContent(
         : mode === 'right'
             ? 'safe end'
             : 'flex-start'
-}
-
-function ChevronIcon() {
-    return <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2.5 3.75L5 6.25L7.5 3.75" /></svg>
 }
 
 function VoiceAssistantIcon() {
@@ -354,16 +337,11 @@ export function ComposerToolbarItemPreview(props: { item: ComposerToolbarItemId;
             case 'voiceMic': return <SpeakerIcon />
             case 'scratchlist': return <ScratchlistToggleIcon />
             case 'schedule': return <ScheduleIcon className="h-[18px] w-[18px]" />
-            case 'model':
-            case 'effort':
-            case 'permission':
-                return <><span className="max-w-24 truncate text-xs font-medium">{props.label}</span><ChevronIcon /></>
         }
     })()
-    const isTextControl = props.item === 'model' || props.item === 'effort' || props.item === 'permission'
     return (
         <span
-            className={`flex h-8 items-center justify-center rounded-full text-[var(--app-fg)]/60 ${isTextControl ? 'gap-1 px-3' : 'w-8'}`}
+            className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--app-fg)]/60"
             aria-hidden="true"
         >
             {icon}
@@ -650,23 +628,6 @@ export function ComposerButtons(props: {
     // The composer must surface that constraint at UI time so the user never
     // builds a submission the hub will reject — see hub/web/routes/messages.ts.
     hasAttachments?: boolean
-    // Generic model/effort value buttons
-    permissionValueLabel?: string
-    permissionValueAriaLabel?: string
-    permissionValueTone?: 'neutral' | 'info' | 'warning' | 'danger'
-    permissionValueOpen?: boolean
-    permissionValueDisabled?: boolean
-    onPermissionValueToggle?: () => void
-    modelValueLabel?: string
-    modelValueButtonRef?: Ref<HTMLButtonElement>
-    modelValueDisabled?: boolean
-    modelValueOpen?: boolean
-    onModelValueToggle?: () => void
-    effortValueLabel?: string
-    effortValueButtonRef?: Ref<HTMLButtonElement>
-    effortValueDisabled?: boolean
-    effortValueOpen?: boolean
-    onEffortValueToggle?: () => void
     // Scratchlist drawer toggle. When `onScratchlistToggle` is provided, a
     // notepad icon appears next to the schedule-send icon. Click toggles
     // composer-send-routing between chat and scratchlist; SessionChat owns
@@ -677,12 +638,9 @@ export function ComposerButtons(props: {
 }) {
     const { t } = useTranslation()
     const { layout } = useComposerToolbarLayout()
-    const isNarrowViewport = useNarrowViewport()
-    // Narrow viewports collapse the model/effort value buttons into the settings
-    // sheet, so the gear must stay reachable even when a persisted layout hides
-    // it (otherwise no session-settings trigger remains). Wide layouts keep
-    // honoring the user's hidden choice.
-    const effectiveLayout: ComposerToolbarLayout = isNarrowViewport && layout.hidden.includes('settings')
+    // The gear is the only way to change model, effort and permission mode, so
+    // it stays visible even when a persisted layout hides it.
+    const effectiveLayout: ComposerToolbarLayout = layout.hidden.includes('settings')
         ? {
             ...layout,
             hidden: layout.hidden.filter((item) => item !== 'settings'),
@@ -737,75 +695,6 @@ export function ComposerButtons(props: {
                     expanded={props.expanded}
                     onToggle={props.onExpandedToggle}
                 />
-                </ToolbarItemSlot>
-
-                <ToolbarItemSlot item="model">
-                {props.modelValueLabel ? (
-                    <button
-                        ref={props.modelValueButtonRef}
-                        type="button"
-                        aria-label={props.modelValueLabel}
-                        title={props.modelValueLabel}
-                        className={`flex h-8 items-center gap-1 rounded-full px-3 text-xs font-medium transition-colors ${
-                            props.modelValueOpen
-                                ? 'bg-[var(--app-secondary-bg)] text-[var(--app-link)]'
-                                : 'text-[var(--app-fg)]/60 hover:bg-[var(--app-subtle-bg)] hover:text-[var(--app-fg)]'
-                        }`}
-                        onClick={props.onModelValueToggle}
-                        disabled={props.modelValueDisabled}
-                    >
-                        {props.modelValueLabel}
-                        <ChevronIcon />
-                    </button>
-                ) : null}
-                </ToolbarItemSlot>
-
-                <ToolbarItemSlot item="permission">
-                {props.permissionValueLabel ? (
-                    <button
-                        type="button"
-                        // Qualified so it does not collide with the model button,
-                        // whose value is also often "Default".
-                        aria-label={props.permissionValueAriaLabel ?? props.permissionValueLabel}
-                        title={props.permissionValueAriaLabel ?? props.permissionValueLabel}
-                        className={`flex h-8 items-center gap-1 rounded-full px-3 text-xs font-medium transition-colors ${
-                            props.permissionValueOpen
-                                ? 'bg-[var(--app-secondary-bg)] text-[var(--app-link)]'
-                                : props.permissionValueTone === 'danger'
-                                    ? 'text-[var(--app-badge-error-text)] hover:bg-[var(--app-subtle-bg)]'
-                                    : props.permissionValueTone === 'warning'
-                                        ? 'text-[var(--app-badge-warning-text)] hover:bg-[var(--app-subtle-bg)]'
-                                        : 'text-[var(--app-fg)]/60 hover:bg-[var(--app-subtle-bg)] hover:text-[var(--app-fg)]'
-                        }`}
-                        onClick={props.onPermissionValueToggle}
-                        disabled={props.permissionValueDisabled}
-                    >
-                        <PermissionIcon />
-                        {props.permissionValueLabel}
-                        <ChevronIcon />
-                    </button>
-                ) : null}
-                </ToolbarItemSlot>
-
-                <ToolbarItemSlot item="effort">
-                {props.effortValueLabel ? (
-                    <button
-                        ref={props.effortValueButtonRef}
-                        type="button"
-                        aria-label={props.effortValueLabel}
-                        title={props.effortValueLabel}
-                        className={`flex h-8 items-center gap-1 rounded-full px-3 text-xs font-medium transition-colors ${
-                            props.effortValueOpen
-                                ? 'bg-[var(--app-secondary-bg)] text-[var(--app-link)]'
-                                : 'text-[var(--app-fg)]/60 hover:bg-[var(--app-subtle-bg)] hover:text-[var(--app-fg)]'
-                        }`}
-                        onClick={props.onEffortValueToggle}
-                        disabled={props.effortValueDisabled}
-                    >
-                        {props.effortValueLabel}
-                        <ChevronIcon />
-                    </button>
-                ) : null}
                 </ToolbarItemSlot>
 
                 <ToolbarItemSlot item="terminal">

@@ -4,6 +4,13 @@ import { ApiError, type ApiClient } from '@/api/client'
 import type { CodexModelSummary } from '@/types/api'
 import { queryKeys } from '@/lib/query-keys'
 
+// The runner caches the catalog for 5 minutes too; refetching sooner only
+// re-asks the hub (a full relay round trip) for the same list. Keep it around
+// for 30 minutes so switching back to a Codex session shows its model at once
+// while a stale list refreshes in the background.
+const CODEX_MODELS_STALE_MS = 5 * 60_000
+const CODEX_MODELS_GC_MS = 30 * 60_000
+
 export function useCodexModels(args: {
     api: ApiClient | null
     sessionId?: string | null
@@ -29,7 +36,8 @@ export function useCodexModels(args: {
             throw new Error('Codex models target unavailable')
         },
         enabled: Boolean(enabled && machineId),
-        staleTime: 30_000,
+        staleTime: CODEX_MODELS_STALE_MS,
+        gcTime: CODEX_MODELS_GC_MS,
         retry: false,
     })
 
@@ -55,7 +63,8 @@ export function useCodexModels(args: {
             throw new Error('Codex models fallback target unavailable')
         },
         enabled: useSessionFallback,
-        staleTime: 30_000,
+        staleTime: CODEX_MODELS_STALE_MS,
+        gcTime: CODEX_MODELS_GC_MS,
         retry: false,
     })
     const query = useSessionFallback ? sessionQuery : machineQuery

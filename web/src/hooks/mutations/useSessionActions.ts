@@ -71,6 +71,28 @@ export function useSessionActions(
         await queryClient.invalidateQueries({ queryKey: queryKeys.sessions })
     }
 
+    // Session settings (permission, model, effort, ...) show the new value at
+    // once. The hub broadcasts the applied session over SSE, so a successful
+    // change needs no refetch; a failed one restores the previous value.
+    type SettingsContext = { previous: SessionResponse | undefined }
+    const applySettingsOptimistically = async (fields: Partial<SessionResponse['session']>): Promise<SettingsContext> => {
+        if (!sessionId) return { previous: undefined }
+        const key = queryKeys.session(sessionId)
+        await queryClient.cancelQueries({ queryKey: key })
+        const previous = queryClient.getQueryData<SessionResponse>(key)
+        if (previous?.session) {
+            queryClient.setQueryData<SessionResponse>(key, { ...previous, session: { ...previous.session, ...fields } })
+        }
+        return { previous }
+    }
+    const rollbackSettings = (context: SettingsContext | undefined) => {
+        if (!sessionId) return
+        if (context?.previous) {
+            queryClient.setQueryData(queryKeys.session(sessionId), context.previous)
+        }
+        void queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) })
+    }
+
     const invalidateCursorModels = async () => {
         if (!sessionId || agentFlavor !== 'cursor') return
         await queryClient.invalidateQueries({ queryKey: queryKeys.sessionCursorModels(sessionId) })
@@ -139,7 +161,8 @@ export function useSessionActions(
             }
             await api.setPermissionMode(sessionId, mode)
         },
-        onSuccess: () => void invalidateSession(),
+        onMutate: (mode) => applySettingsOptimistically({ permissionMode: mode }),
+        onError: (_error, _variables, context) => rollbackSettings(context),
     })
 
     const collaborationMutation = useMutation({
@@ -155,7 +178,8 @@ export function useSessionActions(
             }
             await api.setCollaborationMode(sessionId, mode)
         },
-        onSuccess: () => void invalidateSession(),
+        onMutate: (mode) => applySettingsOptimistically({ collaborationMode: mode }),
+        onError: (_error, _variables, context) => rollbackSettings(context),
     })
 
     const copilotAgentModeMutation = useMutation({
@@ -168,7 +192,8 @@ export function useSessionActions(
             }
             await api.setCopilotAgentMode(sessionId, mode)
         },
-        onSuccess: () => void invalidateSession(),
+        onMutate: (mode) => applySettingsOptimistically({ copilotAgentMode: mode }),
+        onError: (_error, _variables, context) => rollbackSettings(context),
     })
 
     const modelMutation = useMutation({
@@ -179,10 +204,9 @@ export function useSessionActions(
             }
             await api.setModel(sessionId, model)
         },
-        onSuccess: async () => {
-            await invalidateSession()
-            await invalidateCursorModels()
-        },
+        onMutate: (model) => applySettingsOptimistically({ model: model !== null && typeof model === 'object' ? model.modelId : model }),
+        onError: (_error, _variables, context) => rollbackSettings(context),
+        onSuccess: () => void invalidateCursorModels(),
     })
 
     const modelReasoningEffortMutation = useMutation({
@@ -198,7 +222,8 @@ export function useSessionActions(
             }
             await api.setModelReasoningEffort(sessionId, modelReasoningEffort)
         },
-        onSuccess: () => void invalidateSession(),
+        onMutate: (modelReasoningEffort) => applySettingsOptimistically({ modelReasoningEffort }),
+        onError: (_error, _variables, context) => rollbackSettings(context),
     })
 
     const effortMutation = useMutation({
@@ -208,7 +233,8 @@ export function useSessionActions(
             }
             await api.setEffort(sessionId, effort)
         },
-        onSuccess: () => void invalidateSession(),
+        onMutate: (effort) => applySettingsOptimistically({ effort }),
+        onError: (_error, _variables, context) => rollbackSettings(context),
     })
 
     const serviceTierMutation = useMutation({
@@ -224,7 +250,8 @@ export function useSessionActions(
             }
             await api.setServiceTier(sessionId, serviceTier)
         },
-        onSuccess: () => void invalidateSession(),
+        onMutate: (serviceTier) => applySettingsOptimistically({ serviceTier }),
+        onError: (_error, _variables, context) => rollbackSettings(context),
     })
 
     const renameMutation = useMutation({

@@ -1437,34 +1437,31 @@ function SessionChatInner(props: SessionChatProps) {
         try {
             await setPermissionMode(mode)
             haptic.notification('success')
-            props.onRefresh()
         } catch (e) {
             haptic.notification('error')
             console.error('Failed to set permission mode:', e)
         }
-    }, [setPermissionMode, props.onRefresh, haptic])
+    }, [setPermissionMode, haptic])
 
     const handleCollaborationModeChange = useCallback(async (mode: CodexCollaborationMode) => {
         try {
             await setCollaborationMode(mode)
             haptic.notification('success')
-            props.onRefresh()
         } catch (e) {
             haptic.notification('error')
             console.error('Failed to set collaboration mode:', e)
         }
-    }, [setCollaborationMode, props.onRefresh, haptic])
+    }, [setCollaborationMode, haptic])
 
     const handleCopilotAgentModeChange = useCallback(async (mode: CopilotAgentMode) => {
         try {
             await setCopilotAgentMode(mode)
             haptic.notification('success')
-            props.onRefresh()
         } catch (e) {
             haptic.notification('error')
             console.error('Failed to set Copilot agent mode:', e)
         }
-    }, [setCopilotAgentMode, props.onRefresh, haptic])
+    }, [setCopilotAgentMode, haptic])
 
     // Model mode change handler
     const handleModelChange = useCallback(async (model: SessionModelSelection) => {
@@ -1486,7 +1483,6 @@ function SessionChatInner(props: SessionChatProps) {
                 setModelReasoningEffort
             })
             haptic.notification('success')
-            props.onRefresh()
         } catch (e) {
             haptic.notification('error')
             console.error('Failed to set model:', e)
@@ -1497,7 +1493,6 @@ function SessionChatInner(props: SessionChatProps) {
         props.session.modelReasoningEffort,
         setModelReasoningEffort,
         setModel,
-        props.onRefresh,
         haptic
     ])
 
@@ -1546,34 +1541,31 @@ function SessionChatInner(props: SessionChatProps) {
         try {
             await setModelReasoningEffort(modelReasoningEffort)
             haptic.notification('success')
-            props.onRefresh()
         } catch (e) {
             haptic.notification('error')
             console.error('Failed to set model reasoning effort:', e)
         }
-    }, [setModelReasoningEffort, props.onRefresh, haptic])
+    }, [setModelReasoningEffort, haptic])
 
     const handleEffortChange = useCallback(async (effort: string | null) => {
         try {
             await setEffort(effort)
             haptic.notification('success')
-            props.onRefresh()
         } catch (e) {
             haptic.notification('error')
             console.error('Failed to set effort:', e)
         }
-    }, [setEffort, props.onRefresh, haptic])
+    }, [setEffort, haptic])
 
     const handleServiceTierChange = useCallback(async (serviceTier: string | null) => {
         try {
             await setServiceTier(serviceTier)
             haptic.notification('success')
-            props.onRefresh()
         } catch (e) {
             haptic.notification('error')
             console.error('Failed to set service tier:', e)
         }
-    }, [setServiceTier, props.onRefresh, haptic])
+    }, [setServiceTier, haptic])
 
     // Abort handler
     const handleAbort = useCallback(async () => {

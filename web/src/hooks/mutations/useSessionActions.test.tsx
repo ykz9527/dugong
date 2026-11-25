@@ -155,45 +155,70 @@ describe('useSessionActions - reopenSession', () => {
     })
 })
 
-describe('useSessionActions - setModel', () => {
-    it('stays pending until the refreshed session detail is available', async () => {
-        let releaseSessionRefresh!: () => void
-        const sessionRefresh = new Promise<void>((resolve) => {
-            releaseSessionRefresh = resolve
-        })
+describe('useSessionActions - session settings', () => {
+    function setup(api: ApiClient) {
         const queryClient = new QueryClient({
             defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
         })
-        const invalidate = vi.spyOn(queryClient, 'invalidateQueries').mockImplementation(async (filters) => {
-            if (JSON.stringify(filters?.queryKey) === JSON.stringify(['session', 'session-A'])) {
-                await sessionRefresh
-            }
+        queryClient.setQueryData(['session', 'session-A'], {
+            session: { id: 'session-A', model: 'sonnet', permissionMode: 'default', effort: 'high' },
         })
-        const api = {
-            setModel: vi.fn(async () => undefined),
-        } as unknown as ApiClient
+        const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
         const wrapper = ({ children }: { children: ReactNode }) => (
             <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
         )
-        const { result } = renderHook(
-            () => useSessionActions(api, 'session-A', 'agy'),
-            { wrapper },
-        )
+        const { result } = renderHook(() => useSessionActions(api, 'session-A', 'claude'), { wrapper })
+        const cached = () => (queryClient.getQueryData(['session', 'session-A']) as { session: Record<string, unknown> }).session
+        return { result, cached, invalidate }
+    }
+
+    it('shows the new value before the hub answers and refetches nothing on success', async () => {
+        let release!: () => void
+        const api = {
+            setPermissionMode: vi.fn(() => new Promise<void>((resolve) => { release = resolve })),
+        } as unknown as ApiClient
+        const { result, cached, invalidate } = setup(api)
+
+        let change!: Promise<void>
+        act(() => { change = result.current.setPermissionMode('acceptEdits') })
+        await waitFor(() => expect(cached().permissionMode).toBe('acceptEdits'))
+        expect(api.setPermissionMode).toHaveBeenCalledWith('session-A', 'acceptEdits')
+
+        release()
+        await act(async () => await change)
+        expect(cached().permissionMode).toBe('acceptEdits')
+        // The hub broadcasts the applied session over SSE; no list or detail refetch.
+        expect(invalidate).not.toHaveBeenCalled()
+    })
+
+    it('restores the previous value when the hub rejects the change', async () => {
+        const api = {
+            setEffort: vi.fn(async () => { throw new Error('rejected') }),
+        } as unknown as ApiClient
+        const { result, cached, invalidate } = setup(api)
+
+        await act(async () => {
+            await expect(result.current.setEffort('low')).rejects.toThrow('rejected')
+        })
+        expect(cached().effort).toBe('high')
+        expect(invalidate).toHaveBeenCalledWith({ queryKey: ['session', 'session-A'] })
+    })
+
+    it('keeps a model change pending until the hub has applied it', async () => {
+        let release!: () => void
+        const api = {
+            setModel: vi.fn(() => new Promise<void>((resolve) => { release = resolve })),
+        } as unknown as ApiClient
+        const { result, cached } = setup(api)
 
         let settled = false
-        const change = result.current.setModel('gemini-3.5-flash-low').then(() => {
-            settled = true
-        })
-
-        await waitFor(() => expect(api.setModel).toHaveBeenCalled())
-        expect(result.current.isPending).toBe(true)
+        let change!: Promise<void>
+        act(() => { change = result.current.setModel('opus').then(() => { settled = true }) })
+        await waitFor(() => expect(cached().model).toBe('opus'))
         expect(settled).toBe(false)
 
-        releaseSessionRefresh()
+        release()
         await act(async () => await change)
-
         expect(settled).toBe(true)
-        await waitFor(() => expect(result.current.isPending).toBe(false))
-        expect(invalidate).toHaveBeenCalledWith({ queryKey: ['session', 'session-A'] })
     })
 })

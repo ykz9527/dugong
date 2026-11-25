@@ -113,6 +113,7 @@ Two CSS rules (both bit us once):
 
 | Component | Look | Template source | Code |
 |---|---|---|---|
+| Settings choice | 1px grey pill, 13px; selected = black fill, white text | — | `HappyComposer.tsx` `SettingsChoices` |
 | Primary button | black pill, white 13–15px/600 text, `.pw-sweep` | `.m-btn`, `.m-btn-3` | `components/ui/button.tsx` `default` |
 | Outline button | 1px black pill, `.pw-ghost-sweep` | `.m-icon` | `button.tsx` `outline` |
 | Round action (`+`) | 36px black circle, `.pw-sweep` | `.m-btn-3` | `router.tsx` |
@@ -181,3 +182,4 @@ Two CSS rules (both bit us once):
 | Login | `/` | Done 2026-11-11. Template opening: rule draws down, "pit | wall" hung on it, field-style token input, pill button. Removed: blobs, pill badge, bouncy letters (decoration only). |
 | Share | `/share` | Done 2026-11-11 (ledger picker, pills). |
 | Banners (offline, reconnecting, syncing, PWA, runner skew, cursor migration) | global | Done 2026-11-11. Black or grey strips, amber text for warnings, no fills. |
+| Composer session settings | `/sessions/$id` | 2026-11-24 (owner's decision). The gear sheet is the one entry for model, effort, permission and the Codex/Copilot extras, on desktop and phone; it stays open across picks. Options are pill rows (selected = black fill) under 12px/600 group labels on hairlines. Removed: the separate model / effort / permission buttons beside the gear (and their toolbar-layout entries). |
