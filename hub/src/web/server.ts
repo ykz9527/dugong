@@ -48,7 +48,7 @@ import type { SSEManager } from '../sse/sseManager'
 import type { VisibilityTracker } from '../visibility/visibilityTracker'
 import type { Server as BunServer, ServerWebSocket } from 'bun'
 import { applyDefaultWsCompression } from './wsCompression'
-import { acceptsGzip } from './sseCompression'
+import { acceptsEncoding, acceptsGzip } from './sseCompression'
 import type { Server as SocketEngine } from '@socket.io/bun-engine'
 import { jwtVerify } from 'jose'
 import type { WebSocketData } from '@socket.io/bun-engine'
@@ -219,10 +219,11 @@ const IMMUTABLE_ASSET_CACHE_CONTROL = 'public, max-age=31536000, immutable'
 const gzippedEmbeddedAssets = new Map<string, Uint8Array>()
 
 /**
- * Serve one embedded web file. The bundle is several MB of JS/CSS that every
- * device downloads again after each deploy (the service worker precaches all
- * of it), much of it through the relay tunnel: gzip compressible files once,
- * keep the result in memory, and let browsers cache hashed files for good.
+ * Serve one embedded web file. The bundle is MBs of JS/CSS that phones fetch
+ * again after each deploy, much of it through the relay tunnel: send the
+ * brotli copy the web build made (~15% smaller than gzip) when the client
+ * takes it, else gzip once and keep the result in memory; let browsers cache
+ * hashed files for good.
  */
 async function serveEmbeddedAsset(asset: EmbeddedWebAsset, acceptEncoding: string | undefined): Promise<Response> {
     const headers: Record<string, string> = {
@@ -241,6 +242,10 @@ async function serveEmbeddedAsset(asset: EmbeddedWebAsset, acceptEncoding: strin
 
     if (COMPRESSIBLE_MIME.test(asset.mimeType)) {
         headers['Vary'] = 'Accept-Encoding'
+        if (asset.brotliSourcePath && acceptsEncoding(acceptEncoding, 'br')) {
+            headers['Content-Encoding'] = 'br'
+            return new Response(Bun.file(asset.brotliSourcePath), { headers })
+        }
         if (acceptsGzip(acceptEncoding)) {
             let gzipped = gzippedEmbeddedAssets.get(asset.sourcePath)
             if (!gzipped) {
@@ -510,7 +515,8 @@ serve this hub's own frontend — including anything the official app does not h
         }
         return next()
     })
-    app.use('/assets/*', serveStatic({ root: distDir }))
+    // `precompressed` serves the build's .br copy to browsers that list br.
+    app.use('/assets/*', serveStatic({ root: distDir, precompressed: true }))
     app.get('/assets/*', missingAsset)
 
     app.use('*', async (c, next) => {

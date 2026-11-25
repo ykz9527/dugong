@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from 'bun:test'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { gunzipSync } from 'node:zlib'
+import { brotliCompressSync, brotliDecompressSync, gunzipSync } from 'node:zlib'
 import { createWebApp } from './server'
 import type { EmbeddedWebAsset } from './embeddedAssets'
 import { Store } from '../store'
@@ -12,12 +12,20 @@ const dir = mkdtempSync(join(tmpdir(), 'dugong-embedded-'))
 const script = 'console.log("hello");'.repeat(200)
 writeFileSync(join(dir, 'index.html'), '<!doctype html><div id="root"></div>')
 writeFileSync(join(dir, 'app.js'), script)
+writeFileSync(join(dir, 'chat.js'), script)
+writeFileSync(join(dir, 'chat.js.br'), brotliCompressSync(script))
 writeFileSync(join(dir, 'icon.png'), new Uint8Array([137, 80, 78, 71]))
 
 function makeApp() {
     const assets: EmbeddedWebAsset[] = [
         { path: '/index.html', sourcePath: join(dir, 'index.html'), mimeType: 'text/html; charset=utf-8' },
         { path: '/assets/app-abc123.js', sourcePath: join(dir, 'app.js'), mimeType: 'text/javascript; charset=utf-8' },
+        {
+            path: '/assets/chat-abc123.js',
+            sourcePath: join(dir, 'chat.js'),
+            mimeType: 'text/javascript; charset=utf-8',
+            brotliSourcePath: join(dir, 'chat.js.br')
+        },
         { path: '/assets/icon-abc123.png', sourcePath: join(dir, 'icon.png'), mimeType: 'image/png' }
     ]
     return createWebApp({
@@ -72,5 +80,16 @@ describe('embedded web asset serving', () => {
 
         expect(response.status).toBe(404)
         expect(response.headers.get('Cache-Control')).toBe('no-store')
+    })
+
+    it('sends the brotli copy to a client that takes br, gzip to one that refuses it', async () => {
+        const app = makeApp()
+        const br = await app.request('/assets/chat-abc123.js', { headers: { 'Accept-Encoding': 'gzip, deflate, br, zstd' } })
+        const refused = await app.request('/assets/chat-abc123.js', { headers: { 'Accept-Encoding': 'gzip, br;q=0' } })
+
+        expect(br.headers.get('Content-Encoding')).toBe('br')
+        expect(br.headers.get('Cache-Control')).toContain('immutable')
+        expect(brotliDecompressSync(new Uint8Array(await br.arrayBuffer())).toString()).toBe(script)
+        expect(refused.headers.get('Content-Encoding')).toBe('gzip')
     })
 })

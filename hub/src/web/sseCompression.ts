@@ -1,7 +1,7 @@
 import zlib from 'node:zlib'
 
 /**
- * True when the client is willing to receive gzip.
+ * True when the client is willing to receive `coding` (gzip, br).
  *
  * `Accept-Encoding: gzip;q=0` means the opposite of what a substring match
  * would suggest, so parse the q-value rather than looking for the word. All
@@ -12,16 +12,16 @@ import zlib from 'node:zlib'
  * negotiation (hono's compress() matches by substring and would gzip for
  * clients that explicitly refuse it).
  */
-export function acceptsGzip(acceptEncoding: string | undefined): boolean {
+export function acceptsEncoding(acceptEncoding: string | undefined, coding: 'gzip' | 'br'): boolean {
     if (!acceptEncoding) {
         return false
     }
-    let gzipQ: number | null = null
+    let codingQ: number | null = null
     let wildcardQ: number | null = null
     for (const part of acceptEncoding.split(',')) {
         const [rawName, ...params] = part.split(';')
         const name = rawName?.trim().toLowerCase()
-        if (name !== 'gzip' && name !== '*') {
+        if (name !== coding && name !== '*') {
             continue
         }
         const qParam = params
@@ -31,14 +31,18 @@ export function acceptsGzip(acceptEncoding: string | undefined): boolean {
         // repeated entries let the last one win.
         const parsed = qParam ? Number(qParam.slice(2)) : 1
         const q = Number.isFinite(parsed) ? parsed : 1
-        if (name === 'gzip') {
-            gzipQ = q
+        if (name === coding) {
+            codingQ = q
         } else {
             wildcardQ = q
         }
     }
-    const effective = gzipQ ?? wildcardQ
+    const effective = codingQ ?? wildcardQ
     return effective !== null && effective > 0
+}
+
+export function acceptsGzip(acceptEncoding: string | undefined): boolean {
+    return acceptsEncoding(acceptEncoding, 'gzip')
 }
 
 /**

@@ -2,7 +2,10 @@ import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { writeFile } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
+import { promisify } from 'node:util'
+import { brotliCompress, constants as zlibConstants } from 'node:zlib'
 import { shareTargetPathnameFromBase } from './src/lib/sharePath'
 
 function spaFallback(): Plugin {
@@ -62,6 +65,40 @@ function collectPrecachedAssets(): Plugin {
                     visit(chunk.fileName)
                 }
             }
+        }
+    }
+}
+
+const brotli = promisify(brotliCompress)
+
+/**
+ * Write a max-quality brotli copy (`x.js.br`) next to every script and
+ * stylesheet. The hub serves it to browsers that accept br: ~15% fewer bytes
+ * than gzip, compressed once here rather than per request.
+ */
+function brotliAssets(): Plugin {
+    let outDir = ''
+    return {
+        name: 'brotli-assets',
+        apply: 'build',
+        configResolved(config) {
+            outDir = resolve(config.root, config.build.outDir)
+        },
+        async writeBundle(_options, bundle) {
+            await Promise.all(Object.keys(bundle)
+                .filter((fileName) => /\.(js|css|svg)$/.test(fileName))
+                .map(async (fileName) => {
+                    const path = join(outDir, fileName)
+                    const source = readFileSync(path)
+                    if (source.length < 1024) return
+                    const compressed = await brotli(source, {
+                        params: {
+                            [zlibConstants.BROTLI_PARAM_QUALITY]: 11,
+                            [zlibConstants.BROTLI_PARAM_SIZE_HINT]: source.length
+                        }
+                    })
+                    await writeFile(`${path}.br`, compressed)
+                }))
         }
     }
 }
@@ -136,6 +173,7 @@ export default defineConfig({
         react(),
         spaFallback(),
         collectPrecachedAssets(),
+        brotliAssets(),
         VitePWA({
             // User-controlled reload avoids mid-session surprise reloads (autoUpdate reloads all tabs).
             registerType: 'prompt',

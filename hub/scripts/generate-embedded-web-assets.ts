@@ -69,7 +69,11 @@ function main(): void {
         throw new Error(`Missing web/dist/index.html. Run bun run build:web first.`);
     }
 
-    const files = listFiles(webDistDir).sort((a, b) => a.localeCompare(b));
+    // A `.br` file is the web build's brotli copy of its sibling, served in
+    // its place to clients that accept br; it is not a page of its own.
+    const files = listFiles(webDistDir)
+        .filter((filePath) => !filePath.endsWith('.br'))
+        .sort((a, b) => a.localeCompare(b));
     if (files.length === 0) {
         throw new Error(`No files found in web/dist: ${webDistDir}.`);
     }
@@ -85,7 +89,12 @@ function main(): void {
         const mimeType = resolveMimeType(filePath);
 
         imports.push(`import ${importName} from '${importPath}' assert { type: 'file' };`);
-        manifestLines.push(`    { path: '${requestPath}', sourcePath: ${importName}, mimeType: '${mimeType}' },`);
+        let brotli = '';
+        if (existsSync(`${filePath}.br`)) {
+            imports.push(`import ${importName}br from '${importPath}.br' assert { type: 'file' };`);
+            brotli = `, brotliSourcePath: ${importName}br`;
+        }
+        manifestLines.push(`    { path: '${requestPath}', sourcePath: ${importName}, mimeType: '${mimeType}'${brotli} },`);
     });
 
     const output = [
@@ -98,6 +107,7 @@ function main(): void {
         '    path: string;',
         '    sourcePath: string;',
         '    mimeType: string;',
+        '    brotliSourcePath?: string;',
         '}',
         '',
         'export const embeddedAssets: EmbeddedWebAsset[] = [',
