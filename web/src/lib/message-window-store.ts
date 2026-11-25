@@ -3,6 +3,7 @@ import type { ApiClient } from '@/api/client'
 import { normalizeDecryptedMessage } from '@/chat/normalize'
 import type { DecryptedMessage, MessageStatus, MessagesResponse } from '@/types/api'
 import { isQueuedForInvocation, mergeMessages } from '@/lib/messages'
+import { NARROW_VIEWPORT_QUERY } from '@/hooks/useNarrowViewport'
 
 export type MessageViewMode = 'tail' | 'history'
 
@@ -46,6 +47,17 @@ const OLDER_LOAD_WINDOW_SIZE = 800
 // subagent-heavy turns run to a few thousand.
 const TURN_WINDOW_CAP = 3000
 const PAGE_SIZE = 200
+// A phone shows a dozen rows at a time, yet opening a session used to wait
+// for the newest 200 (often hundreds of KB of tool output over the relay).
+// Narrow screens open on the newest 50; scrolling up pages back as before.
+const NARROW_LATEST_PAGE_SIZE = 50
+
+function latestPageSize(): number {
+    const narrow = typeof window !== 'undefined'
+        && typeof window.matchMedia === 'function'
+        && window.matchMedia(NARROW_VIEWPORT_QUERY).matches
+    return narrow ? NARROW_LATEST_PAGE_SIZE : PAGE_SIZE
+}
 
 export type MessagePosition = {
     at: number
@@ -739,7 +751,7 @@ async function runTailSync(api: ApiClient, sessionId: string): Promise<void> {
 
         if (!canIncrement) {
             const requestBaseline = new Map(getState(sessionId).messages.map((message) => [message.id, message]))
-            const response = await api.getMessages(sessionId, { limit: PAGE_SIZE })
+            const response = await api.getMessages(sessionId, { limit: latestPageSize() })
             if (!isCurrentTailSync(sessionId, generation)) return
             updateState(sessionId, (previous) => {
                 if (previous.syncGeneration !== generation) return previous
@@ -794,7 +806,7 @@ async function runTailSync(api: ApiClient, sessionId: string): Promise<void> {
                 // than page through every missed message (thousands of rows,
                 // tool output included) just to drop them again.
                 const latestBaseline = new Map(getState(sessionId).messages.map((message) => [message.id, message]))
-                const latest = await api.getMessages(sessionId, { limit: PAGE_SIZE })
+                const latest = await api.getMessages(sessionId, { limit: latestPageSize() })
                 if (!isCurrentTailSync(sessionId, generation)) return
                 updateState(sessionId, (previous) => {
                     if (previous.syncGeneration !== generation) return previous

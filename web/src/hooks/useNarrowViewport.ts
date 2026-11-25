@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-const NARROW_VIEWPORT_QUERY = '(max-width: 640px)'
+export const NARROW_VIEWPORT_QUERY = '(max-width: 640px)'
 
 /**
  * True when the viewport is narrow enough that the composer should collapse

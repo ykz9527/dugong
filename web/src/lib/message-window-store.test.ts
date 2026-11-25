@@ -281,6 +281,21 @@ describe('message tail synchronization', () => {
         expect('pending' in getMessageWindowState(id)).toBe(false)
     })
 
+    it('opens on the newest 50 rows on a narrow screen', async () => {
+        const id = sessionId('narrow-first-page')
+        vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(max-width: 640px)' }))
+        try {
+            const latest = makeAgentMessage({ id: 'latest', seq: 60, at: 60_000 })
+            const getMessages = vi.fn(async () => latestResponse([latest], { hasMore: true, nextBeforeAt: 59_000, nextBeforeSeq: 59 }))
+            await syncTailMessages(createApi(getMessages), id)
+
+            expect(getMessages).toHaveBeenCalledWith(id, { limit: 50 })
+            expect(getMessageWindowState(id).hasMore).toBe(true)
+        } finally {
+            vi.unstubAllGlobals()
+        }
+    })
+
     it('preserves queued rows while replacing stale server rows on re-entry', async () => {
         const id = sessionId('reentry-queued')
         const cached = makeAgentMessage({ id: 'cached', seq: 40, at: 4_000 })
