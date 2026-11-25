@@ -450,9 +450,9 @@ export class RpcGateway {
      * second, so it gets the ordinary timeout; an import still converts whole
      * rollouts and keeps the long one.
      */
-    async listCodexSessionsForMachine(machineId: string, cwd?: string | null, sessionIds?: string[]): Promise<RpcListCodexSessionsResponse> {
+    async listCodexSessionsForMachine(machineId: string, cwd?: string | null, sessionIds?: string[], userRoots?: string[]): Promise<RpcListCodexSessionsResponse> {
         const timeoutMs = sessionIds?.length ? MODEL_LIST_RPC_TIMEOUT_MS : DEFAULT_RPC_TIMEOUT_MS
-        const result = await this.machineRpc(machineId, RPC_METHODS.ListCodexSessions, { cwd: cwd ?? null, sessionIds }, timeoutMs)
+        const result = await this.machineRpc(machineId, RPC_METHODS.ListCodexSessions, { cwd: cwd ?? null, sessionIds, ...(userRoots ? { userRoots } : {}) }, timeoutMs)
         return ListCodexSessionsRpcResponseSchema.parse(result)
     }
 
@@ -471,9 +471,15 @@ export class RpcGateway {
         machineId: string,
         cwd?: string | null,
         sessionIds?: string[],
-        cursor?: ClaudeTranscriptCursor
+        cursor?: ClaudeTranscriptCursor,
+        userRoots?: string[]
     ): Promise<RpcListClaudeSessionsResponse> {
-        const result = await this.machineRpc(machineId, RPC_METHODS.ListClaudeSessions, { cwd: cwd ?? null, sessionIds, ...(cursor ? { cursor } : {}) }, DEFAULT_RPC_TIMEOUT_MS)
+        const result = await this.machineRpc(machineId, RPC_METHODS.ListClaudeSessions, {
+            cwd: cwd ?? null,
+            sessionIds,
+            ...(cursor ? { cursor } : {}),
+            ...(userRoots ? { userRoots } : {})
+        }, DEFAULT_RPC_TIMEOUT_MS)
         return ListClaudeSessionsRpcResponseSchema.parse(result)
     }
 

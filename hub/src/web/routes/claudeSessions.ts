@@ -10,6 +10,7 @@ import { ImportedMessageConflictError } from '../../store/messages'
 import { truncateOversizedMessageContent } from '../../store/contentCodec'
 import type { Machine, SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
+import { resolveWorkspaceScope } from './workspaceScope'
 
 /**
  * Adopting a Claude Code session that was started outside HAPI.
@@ -514,12 +515,18 @@ export function createClaudeSessionRoutes(options: {
 
     app.get('/claude/sessions', async (c) => {
         const namespace = c.get('namespace')
+        // Whose sessions: the adopting user's directories, or everyone's when
+        // no user is picked. See `ListClaudeSessionsRpcRequestSchema.userRoots`.
+        const scope = resolveWorkspaceScope(c, options.store, c.req.query('workspaceUser'))
+        if (scope instanceof Response) return scope
         const engine = options.getSyncEngine()
         const machine = resolveClaudeMachine(engine, namespace, c.req.query('machineId')?.trim() || null)
         if (!engine || !machine) return c.json({ success: false, error: 'No online machine available for Claude session adoption', sessions: [] }, 503)
+        // Owns nothing yet: nothing to list, and no reason to ask the machine.
+        if (scope && scope.roots.length === 0) return c.json({ success: true, sessions: [], machineId: machine.id })
         let result: Awaited<ReturnType<SyncEngine['listClaudeSessionsForMachine']>>
         try {
-            result = await engine.listClaudeSessionsForMachine(machine.id, c.req.query('cwd')?.trim() || null)
+            result = await engine.listClaudeSessionsForMachine(machine.id, c.req.query('cwd')?.trim() || null, undefined, undefined, scope ? [...scope.roots] : undefined)
         } catch (cause) {
             return c.json({ success: false, error: describeListFailure(cause), sessions: [], machineId: machine.id }, 503)
         }

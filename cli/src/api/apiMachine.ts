@@ -55,6 +55,7 @@ import { applyVersionedAck } from './versionedUpdate'
 import { archiveLocalCodexSession, listLocalCodexSessionSummaries, listLocalCodexSessionsWithMessagesByIds } from '../modules/common/codexSessions'
 import { listLocalPiSessionSummaries, listLocalPiSessionsWithMessagesByIds } from '../modules/common/piSessions'
 import { listLocalClaudeSessionSummaries, listLocalClaudeSessionsWithMessagesByIds } from '../modules/common/claudeSessions'
+import { isSessionOwnedByUser } from '../modules/common/userOwnedSession'
 import { buildSocketIoExtraHeaderOptions } from './hubExtraHeaders'
 import { collectMachineHealth } from '@/utils/machineHealth'
 import { inspectCursorChatStore } from '@/cursor/cursorChatStoreStatus'
@@ -361,10 +362,15 @@ export class ApiMachineClient {
                     }
                     return { success: true, sessions }
                 }
-                // The root check runs inside the scan, so sessions outside the
-                // roots do not use up the listing's limit.
+                // Both checks run inside the scan, so sessions outside the roots
+                // do not use up the listing's limit. Codex files rollouts by
+                // date, not directory, so the user's roots cannot narrow what
+                // is read — only what is kept.
+                const userRoots = parsed.data.userRoots
+                if (userRoots && userRoots.length === 0) return { success: true, sessions: [] }
                 const sessions = await listLocalCodexSessionSummaries({
-                    accept: (session) => this.isLocalSessionWithinWorkspaceRoots(session)
+                    accept: async (session) => (!userRoots || isSessionOwnedByUser(session.cwd, userRoots))
+                        && await this.isLocalSessionWithinWorkspaceRoots(session)
                 })
                 return { success: true, sessions }
             }
@@ -435,13 +441,17 @@ export class ApiMachineClient {
                     }
                     return { success: true, sessions }
                 }
-                // The listing applies the workspace-root check itself (see
-                // `accept`), so its result needs no second pass.
+                // The listing applies both checks itself (see `accept`), so its
+                // result needs no second pass. The user's roots, when given,
+                // also pick which project directories are read at all.
+                const userRoots = parsed.data.userRoots
+                if (userRoots && userRoots.length === 0) return { success: true, sessions: [] }
                 const sessions = await listLocalClaudeSessionSummaries(
                     undefined,
                     rawCwd || null,
-                    (session) => this.isLocalSessionWithinWorkspaceRoots(session),
-                    this.normalizedWorkspaceRoots
+                    async (session) => (!userRoots || isSessionOwnedByUser(session.cwd, userRoots))
+                        && await this.isLocalSessionWithinWorkspaceRoots(session),
+                    userRoots ?? this.normalizedWorkspaceRoots
                 )
                 return { success: true, sessions }
             }

@@ -502,6 +502,17 @@ export type ListLocalCodexSessionsOptions = {
     ids?: ReadonlySet<string>
 }
 
+/**
+ * How many rollouts a listing may open, as a multiple of its limit.
+ *
+ * Rollouts are filed by date, not directory, so a listing scoped to one
+ * user's directories can only tell theirs apart after opening each one. On a
+ * shared machine where they own few, filling the limit would mean opening
+ * every rollout there is (1650 on one box); stopping here keeps the listing
+ * to the user's recent work, which is what a picker is for.
+ */
+const CODEX_SCAN_BUDGET_FACTOR = 3
+
 function pathNamesOneOf(file: string, ids: ReadonlySet<string>): boolean {
     for (const id of ids) if (file.includes(id)) return true
     return false
@@ -526,7 +537,12 @@ export async function listLocalCodexSessionSummaries(options: ListLocalCodexSess
             ...candidates.filter((candidate) => !pathNamesOneOf(candidate.file, ids))
         ]
     }
+    // A lookup by id has to find its session wherever it is.
+    const budget = options.ids ? Infinity : limit * CODEX_SCAN_BUDGET_FACTOR
+    let opened = 0
     for (const candidate of candidates) {
+        if (opened >= budget) break
+        opened += 1
         const parts = await summariseCodexSession(candidate)
         // Newest first, so the first rollout seen for an id is its latest.
         if (!parts || seen.has(parts.id)) continue

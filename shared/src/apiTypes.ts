@@ -221,7 +221,13 @@ export const CodexLocalSessionWithMessagesSchema = CodexLocalSessionSummarySchem
 
 export const ListCodexSessionsRpcRequestSchema = z.object({
     cwd: z.string().nullable().optional(),
-    sessionIds: z.array(z.string().min(1)).optional()
+    sessionIds: z.array(z.string().min(1)).optional(),
+    /**
+     * The adopting workspace user's directories: list only sessions run under
+     * one of them, or in a worktree of a repo under one. Absent lists every
+     * session under the machine's workspace roots; empty lists none.
+     */
+    userRoots: z.array(z.string()).optional()
 })
 
 export const ListCodexSessionsRpcResponseSchema = z.union([
@@ -404,7 +410,13 @@ export const ListClaudeSessionsRpcRequestSchema = z.object({
     cwd: z.string().nullable().optional(),
     sessionIds: z.array(z.string().min(1)).optional(),
     /** With exactly one session id: continue that transcript from here. */
-    cursor: ClaudeTranscriptCursorSchema.optional()
+    cursor: ClaudeTranscriptCursorSchema.optional(),
+    /**
+     * The adopting workspace user's directories: list only sessions run under
+     * one of them, or in a worktree of a repo under one. Absent lists every
+     * session under the machine's workspace roots; empty lists none.
+     */
+    userRoots: z.array(z.string()).optional()
 })
 
 export const ListClaudeSessionsRpcResponseSchema = z.union([

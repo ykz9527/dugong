@@ -37,15 +37,20 @@ export type AdoptableSession = {
 
 /** The runner's list, or its refusal as an error (usually actionable: an
  *  out-of-date runner, no machine online). */
-async function listAdoptableSessions(api: ApiClient, flavor: AdoptableFlavor, machineId: string): Promise<AdoptableSession[]> {
+async function listAdoptableSessions(
+    api: ApiClient,
+    flavor: AdoptableFlavor,
+    machineId: string,
+    workspaceUserId: string | null
+): Promise<AdoptableSession[]> {
     if (flavor === 'codex') {
         // Codex import re-syncs a session already in the hub instead of
         // refusing it, so nothing here is marked unselectable.
-        const response = await api.getCodexSessions(null, machineId)
+        const response = await api.getCodexSessions(null, machineId, workspaceUserId)
         if (!response.success) throw new Error(response.error)
         return response.sessions
     }
-    const response = await api.getClaudeSessions(null, machineId)
+    const response = await api.getClaudeSessions(null, machineId, workspaceUserId)
     if (!response.success) throw new Error(response.error)
     return response.sessions
 }
@@ -90,6 +95,8 @@ export function AdoptSessionPicker(props: {
     api: ApiClient | null
     flavor: AdoptableFlavor
     machineId: string
+    /** Whose directories to list; null lists every session on the machine. */
+    activeUser: { id: string; name: string; paths: readonly string[] } | null
     selectedId: string | null
     onSelect: (session: AdoptableSession | null) => void
 }) {
@@ -98,12 +105,17 @@ export function AdoptSessionPicker(props: {
     const [query, setQuery] = useState('')
     const [directory, setDirectory] = useState(ALL_DIRECTORIES)
 
-    const { api, flavor, machineId } = props
+    const { api, flavor, machineId, activeUser } = props
+    // Someone else's session is still adoptable (a colleague's terminal left
+    // behind), so "all" is one click away rather than hidden.
+    const [showAll, setShowAll] = useState(false)
+    const scopedUser = activeUser && !showAll ? activeUser : null
+    const ownsNothing = scopedUser !== null && scopedUser.paths.length === 0
     const listing = useQuery({
-        queryKey: ['adoptable-sessions', flavor, machineId],
+        queryKey: ['adoptable-sessions', flavor, machineId, scopedUser?.id ?? null],
         queryFn: async () => {
             if (!api) throw new Error('API unavailable')
-            return await listAdoptableSessions(api, flavor, machineId)
+            return await listAdoptableSessions(api, flavor, machineId, scopedUser?.id ?? null)
         },
         enabled: Boolean(api && machineId),
         // Reading the agent's transcripts is slow, and a refusal is not
@@ -172,8 +184,16 @@ export function AdoptSessionPicker(props: {
                     <p className="px-3 py-6 text-center text-[13px] text-[var(--app-hint)]">{t('board.adopt.loading', { agent })}</p>
                 ) : error ? (
                     <p role="alert" className="px-3 py-6 text-center text-[13px] text-[var(--app-accent)]">{error}</p>
+                ) : ownsNothing ? (
+                    <p className="px-3 py-6 text-center text-[13px] text-[var(--app-badge-warning-text)]">
+                        {t('board.adopt.userOwnsNothing', { name: scopedUser.name })}
+                    </p>
                 ) : filtered.length === 0 ? (
-                    <p className="px-3 py-6 text-center text-[13px] text-[var(--app-hint)]">{t('board.adopt.empty', { agent })}</p>
+                    <p className="px-3 py-6 text-center text-[13px] text-[var(--app-hint)]">
+                        {scopedUser
+                            ? t('board.adopt.emptyForUser', { agent, name: scopedUser.name })
+                            : t('board.adopt.empty', { agent })}
+                    </p>
                 ) : (
                     <div className="divide-y divide-[var(--app-border)]">
                         {filtered.map((session) => {
@@ -243,7 +263,22 @@ export function AdoptSessionPicker(props: {
                     </div>
                 )}
             </div>
-            <p className="text-xs text-[var(--app-hint)]">{t('board.adopt.liveHint')}</p>
+            <div className="flex items-baseline justify-between gap-3 text-xs text-[var(--app-hint)]">
+                <p>{t('board.adopt.liveHint')}</p>
+                {activeUser ? (
+                    <button
+                        type="button"
+                        className="pw-underline shrink-0 font-semibold text-[var(--app-fg)]"
+                        onClick={() => {
+                            setShowAll((value) => !value)
+                            // The selection may not be in the other list.
+                            props.onSelect(null)
+                        }}
+                    >
+                        {showAll ? t('board.adopt.onlyUser', { name: activeUser.name }) : t('board.adopt.showAll')}
+                    </button>
+                ) : null}
+            </div>
         </div>
     )
 }

@@ -409,6 +409,36 @@ describe('Claude session adoption', () => {
         expect((await response.json() as { error: string }).error).toContain('restarting the runner')
     })
 
+    it('lists only the adopting user\'s directories, and nothing for a user who owns none', async () => {
+        const { store } = setup()
+        const kai = store.workspaceUsers.create({ namespace: 'default', name: 'Kai', paths: ['/home/kai/repo'] })
+        const newcomer = store.workspaceUsers.create({ namespace: 'default', name: 'New', paths: [] })
+        const asked: Array<string[] | undefined> = []
+        const engine = {
+            getOnlineMachinesByNamespace: () => [machine('box-1')],
+            listClaudeSessionsForMachine: async (_m: string, _cwd: string | null, _ids?: string[], _cursor?: unknown, userRoots?: string[]) => {
+                asked.push(userRoots)
+                return { success: true, sessions: [] }
+            }
+        } as unknown as SyncEngine
+        const app = new Hono<WebAppEnv>()
+        app.use('*', async (c, next) => {
+            c.set('namespace', 'default')
+            await next()
+        })
+        app.route('/api', createClaudeSessionRoutes({ store, getSyncEngine: () => engine }))
+
+        expect((await app.request(`/api/claude/sessions?workspaceUser=${kai.id}`)).status).toBe(200)
+        expect((await app.request('/api/claude/sessions')).status).toBe(200)
+        const empty = await app.request(`/api/claude/sessions?workspaceUser=${newcomer.id}`)
+
+        // The machine is asked for Kai's roots, then for everything; a user
+        // who owns nothing is answered without asking it at all.
+        expect(asked).toEqual([['/home/kai/repo'], undefined])
+        expect(await empty.json()).toMatchObject({ success: true, sessions: [] })
+        expect((await app.request('/api/claude/sessions?workspaceUser=gone')).status).toBe(404)
+    })
+
     it('pulls a long transcript a page at a time, and says how far a failed one got', async () => {
         // One reply per transcript used to carry the whole history; a 92 MB
         // transcript made a 69 MB reply, past the hub's socket buffer, and the

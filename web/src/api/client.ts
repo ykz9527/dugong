@@ -492,10 +492,12 @@ export class ApiClient {
         })
     }
 
-    async getCodexSessions(cwd?: string | null, machineId?: string | null): Promise<CodexLocalSessionsResponse> {
+    async getCodexSessions(cwd?: string | null, machineId?: string | null, workspaceUserId?: string | null): Promise<CodexLocalSessionsResponse> {
         const params = new URLSearchParams()
         if (cwd?.trim()) params.set('cwd', cwd.trim())
         if (machineId?.trim()) params.set('machineId', machineId.trim())
+        // Only that user's directories; see the hub's listing route.
+        if (workspaceUserId) params.set('workspaceUser', workspaceUserId)
         const query = params.size ? `?${params.toString()}` : ''
         return await this.request<CodexLocalSessionsResponse>(`/api/codex/sessions${query}`)
     }
@@ -515,10 +517,12 @@ export class ApiClient {
         })
     }
 
-    async getClaudeSessions(cwd?: string | null, machineId?: string | null): Promise<ClaudeLocalSessionsResponse> {
+    async getClaudeSessions(cwd?: string | null, machineId?: string | null, workspaceUserId?: string | null): Promise<ClaudeLocalSessionsResponse> {
         const params = new URLSearchParams()
         if (cwd?.trim()) params.set('cwd', cwd.trim())
         if (machineId?.trim()) params.set('machineId', machineId.trim())
+        // Only that user's directories; see the hub's listing route.
+        if (workspaceUserId) params.set('workspaceUser', workspaceUserId)
         const query = params.size ? `?${params.toString()}` : ''
         return await this.request<ClaudeLocalSessionsResponse>(`/api/claude/sessions${query}`)
     }

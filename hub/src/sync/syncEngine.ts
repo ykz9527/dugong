@@ -3981,8 +3981,8 @@ export class SyncEngine {
         return await this.rpcGateway.listCodexModelsForSession(sessionId)
     }
 
-    async listCodexSessionsForMachine(machineId: string, cwd?: string | null, sessionIds?: string[]) {
-        return await this.rpcGateway.listCodexSessionsForMachine(machineId, cwd, sessionIds)
+    async listCodexSessionsForMachine(machineId: string, cwd?: string | null, sessionIds?: string[], userRoots?: string[]) {
+        return await this.rpcGateway.listCodexSessionsForMachine(machineId, cwd, sessionIds, userRoots)
     }
 
     async listPiSessionsForMachine(machineId: string, cwd?: string | null, sessionIds?: string[]): Promise<RpcListPiSessionsResponse> {
@@ -3993,9 +3993,10 @@ export class SyncEngine {
         machineId: string,
         cwd?: string | null,
         sessionIds?: string[],
-        cursor?: ClaudeTranscriptCursor
+        cursor?: ClaudeTranscriptCursor,
+        userRoots?: string[]
     ): Promise<RpcListClaudeSessionsResponse> {
-        return await this.rpcGateway.listClaudeSessionsForMachine(machineId, cwd, sessionIds, cursor)
+        return await this.rpcGateway.listClaudeSessionsForMachine(machineId, cwd, sessionIds, cursor, userRoots)
     }
 
     async archiveCodexSessionForMachine(machineId: string, sessionId: string): Promise<RpcArchiveCodexSessionResponse> {

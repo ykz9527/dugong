@@ -10,6 +10,7 @@ import type { Machine, SyncEngine } from '../../sync/syncEngine'
 import type { Store, StoredMessage } from '../../store'
 import { truncateOversizedMessageContent } from '../../store/contentCodec'
 import type { WebAppEnv } from '../middleware/auth'
+import { resolveWorkspaceScope } from './workspaceScope'
 
 type ScriptLogKind = 'sync' | 'restart'
 
@@ -957,6 +958,7 @@ async function listCodexSessionsViaMachine(options: {
     cwd?: string | null
     machineId?: string | null
     sessionIds?: string[]
+    userRoots?: string[]
 }): Promise<{ sessions: RemoteCodexSession[]; machineId?: string; error?: string }> {
     const machineId = resolveCodexImportMachineId(options.cwd, options.namespace, options.engine, options.machineId)
     if (!machineId || !options.engine) {
@@ -964,7 +966,7 @@ async function listCodexSessionsViaMachine(options: {
     }
     let result: Awaited<ReturnType<SyncEngine['listCodexSessionsForMachine']>>
     try {
-        result = await options.engine.listCodexSessionsForMachine(machineId, options.cwd, options.sessionIds)
+        result = await options.engine.listCodexSessionsForMachine(machineId, options.cwd, options.sessionIds, options.userRoots)
     } catch (cause) {
         // A timeout used to escape as a bare 500 after two minutes. Most often
         // the machine dropped off the hub mid-reply; say so.
@@ -2225,11 +2227,18 @@ export function createCodexDesktopRoutes(options: {
     app.get('/codex/sessions', async (c) => {
         const cwd = c.req.query('cwd')?.trim() || null
         const machineId = c.req.query('machineId')?.trim() || null
+        // Same scoping as the Claude listing: the adopting user's directories.
+        const scope = resolveWorkspaceScope(c, options.store, c.req.query('workspaceUser'))
+        if (scope instanceof Response) return scope
+        if (scope && scope.roots.length === 0) {
+            return c.json({ success: true, sessions: [] } satisfies CodexLocalSessionsResponse)
+        }
         const remote = await listCodexSessionsViaMachine({
             engine: options.getSyncEngine(),
             namespace: c.get('namespace'),
             cwd,
-            machineId
+            machineId,
+            userRoots: scope ? [...scope.roots] : undefined
         })
         if (remote.error) {
             return c.json({

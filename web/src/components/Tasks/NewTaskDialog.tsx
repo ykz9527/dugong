@@ -33,7 +33,7 @@ import { ADOPTABLE_FLAVORS, AdoptSessionPicker, type AdoptableFlavor, type Adopt
 export function NewTaskDialog(props: {
     machines: Machine[]
     /** The workspace user being looked through, if any; their directories are the task's natural home. */
-    activeUser: { name: string; paths: readonly string[] } | null
+    activeUser: { id: string; name: string; paths: readonly string[] } | null
     isPending: boolean
     error: string | null
     /** Set once the task exists but did not start; the dialog then only closes. */
@@ -193,6 +193,7 @@ export function NewTaskDialog(props: {
                                     api={api}
                                     flavor={adoptFlavor}
                                     machineId={machineId}
+                                    activeUser={props.activeUser}
                                     selectedId={adopted?.id ?? null}
                                     onSelect={(session) => {
                                         setAdopted(session)
