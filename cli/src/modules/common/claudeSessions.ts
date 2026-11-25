@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, readlinkSync, statSync } from 'node:fs'
+import { readdirSync, statSync } from 'node:fs'
 import { open } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { homedir } from 'node:os'
@@ -16,6 +16,7 @@ import { parseSessionLogLine } from '@/claude/utils/sessionScanner'
 import { extractRawUserTextContent, isExternalUserMessage } from '@/claude/utils/externalUserMessage'
 import { detectWorktreeOrigin } from './worktreeOrigin'
 import { readTranscriptEnds } from './transcriptEnds'
+import { claudeSessionHolders } from './claudeSessionHolders'
 
 /**
  * Discovery for Claude Code sessions that were started with the bare `claude`
@@ -40,58 +41,16 @@ import { readTranscriptEnds } from './transcriptEnds'
  */
 const DEFAULT_CLAUDE_SESSION_SCAN_LIMIT = 100
 
-/**
- * Sessions a running `claude` is provably working on.
- *
- * Each session gets a scratch directory under `/tmp/claude-<uid>/<cwd>/<id>/`
- * and its process keeps a descriptor on it, so reading the process table
- * answers "is this one live" as a fact rather than from how recently the
- * transcript was written — which cannot tell a session still thinking from
- * one quit ten seconds ago.
- *
- * One-directional: a hit means live, a miss means *unknown*. Not every
- * running agent holds such a descriptor, including ones inside a served
- * workspace, so the caller must keep its own check for the misses rather than
- * reading absence as "safe to adopt".
- *
- * Returns null where the question cannot be asked at all (no /proc).
- */
-const SCRATCH_DIR_SESSION = /^\/tmp\/claude-\d+\/[^/]+\/([0-9a-f-]{36})(?:\/|$)/
+/** Session id → processes tied to it; null where that cannot be known. */
+function sessionHolders() {
+    return claudeSessionHolders({ claudeConfigDir: getClaudeConfigDir() })
+}
 
-function transcriptsHeldOpen(): Set<string> | null {
-    if (process.platform !== 'linux') return null
-    let pids: string[]
-    try {
-        pids = readdirSync('/proc').filter((entry) => /^\d+$/.test(entry))
-    } catch {
-        return null
-    }
-
-    const held = new Set<string>()
-    for (const pid of pids) {
-        // Every read here races the process exiting; a vanished pid is not an
-        // error, it is an answer.
-        try {
-            if (readFileSync(`/proc/${pid}/comm`, 'utf-8').trim() !== 'claude') continue
-        } catch {
-            continue
-        }
-        let fds: string[]
-        try {
-            fds = readdirSync(`/proc/${pid}/fd`)
-        } catch {
-            continue
-        }
-        for (const fd of fds) {
-            try {
-                const match = SCRATCH_DIR_SESSION.exec(readlinkSync(`/proc/${pid}/fd/${fd}`))
-                if (match) held.add(match[1])
-            } catch {
-                continue
-            }
-        }
-    }
-    return held
+/** `live` and `holders` for one session, or nothing when holders are unknown. */
+function livenessOf(holders: ReturnType<typeof sessionHolders>, sessionId: string) {
+    if (!holders) return {}
+    const own = holders.get(sessionId)
+    return own ? { live: own.some((holder) => holder.current), holders: own } : { live: false }
 }
 
 type ClaudeSessionFileCandidate = {
@@ -105,9 +64,12 @@ function truncateText(value: string, maxLength: number): string {
     return value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value
 }
 
+function getClaudeConfigDir(): string {
+    return process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), '.claude')
+}
+
 function getClaudeProjectsRoot(): string {
-    const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), '.claude')
-    return join(claudeConfigDir, 'projects')
+    return join(getClaudeConfigDir(), 'projects')
 }
 
 function jsonlFilesIn(directory: string): string[] {
@@ -385,13 +347,13 @@ export async function listLocalClaudeSessionSummaries(
     if (limit <= 0) return []
     const seenIds = new Set<string>()
     const summaries: ClaudeLocalSessionSummary[] = []
-    const heldOpen = transcriptsHeldOpen()
+    const holders = sessionHolders()
     for (const candidate of collectSortedClaudeSessionFiles(cwd, roots)) {
         const summary = await summariseClaudeLocalSession(candidate)
         if (!summary || seenIds.has(summary.id)) continue
         seenIds.add(summary.id)
         if (accept && !(await accept(summary))) continue
-        summaries.push(heldOpen ? { ...summary, live: heldOpen.has(summary.id) } : summary)
+        summaries.push({ ...summary, ...livenessOf(holders, summary.id) })
         if (summaries.length >= limit) break
     }
     return summaries
@@ -512,7 +474,7 @@ export async function listLocalClaudeSessionsWithMessagesByIds(
     if (cursor && ids.size !== 1) throw new Error('A transcript cursor applies to exactly one session')
     const unresolved = new Set(ids)
     const sessions: ClaudeLocalSessionWithMessages[] = []
-    const heldOpen = cursor ? null : transcriptsHeldOpen()
+    const holders = cursor ? null : sessionHolders()
     for (const candidate of collectSortedClaudeSessionFiles(cwd)) {
         // The filename is the session id in every transcript Claude writes, so
         // this skips files nobody asked for without opening them.
@@ -527,7 +489,7 @@ export async function listLocalClaudeSessionsWithMessagesByIds(
         const worktree = !cursor && summary.cwd ? detectWorktreeOrigin(summary.cwd) : null
         sessions.push({
             ...summary,
-            ...(heldOpen ? { live: heldOpen.has(summary.id) } : {}),
+            ...livenessOf(holders, summary.id),
             ...(worktree ? { worktree } : {}),
             messages: page.messages,
             ...(page.nextCursor ? { nextCursor: page.nextCursor } : {})

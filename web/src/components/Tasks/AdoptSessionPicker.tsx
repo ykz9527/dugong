@@ -5,6 +5,7 @@ import { readableError, type ApiClient } from '@/api/client'
 import { useTranslation } from '@/lib/use-translation'
 import { SelectControl } from '@/components/ui/select-control'
 import { formatFileSize } from '@/lib/file-metadata'
+import type { ClaudeSessionHolder } from '@hapi/protocol/apiTypes'
 
 const ALL_DIRECTORIES = '__all__'
 
@@ -23,10 +24,15 @@ export type AdoptableSession = {
     messageCount?: number
     /** Claude only: transcript bytes, shown when there is no count. */
     size?: number
-    /** Claude only: the transcript is still being written. */
-    live?: boolean
+    /** Claude only: `running` when a process writes it now, `unsure` when
+     *  something suggests it might (see the hub's `classifyLiveness`). */
+    liveness?: 'running' | 'unsure'
+    /** Claude only: the processes tied to it, shown as the reason. */
+    holders?: ClaudeSessionHolder[]
     /** Claude only: the session already has a HAPI row. */
     hapiSessionId?: string
+    /** Set when the operator picked an `unsure` session by confirming it is closed. */
+    force?: boolean
 }
 
 /** The runner's list, or its refusal as an error (usually actionable: an
@@ -51,13 +57,34 @@ function sessionExtent(session: AdoptableSession, t: ReturnType<typeof useTransl
     return size ? ` · ${size}` : null
 }
 
+const LIVE_WRITE_WINDOW_MS = 60_000
+
+/**
+ * Why a session looks in use, in a line: the processes tied to it, or a write
+ * in the last minute. "Still running" alone reads as a bug to someone who
+ * believes they closed it; the pid and what started it tell them where to look.
+ */
+function livenessReason(session: AdoptableSession, t: ReturnType<typeof useTranslation>['t']): string | null {
+    if (!session.liveness) return null
+    const holders = session.holders ?? []
+    const relevant = session.liveness === 'running' ? holders.filter((holder) => holder.current) : holders
+    const parts = relevant.map((holder) => {
+        const by = holder.launcher === 'terminal' ? t('board.adopt.byTerminal') : holder.launcher ?? t('board.adopt.byUnknown')
+        const fields = [`PID ${holder.pid}`, by, holder.status].filter(Boolean).join(' · ')
+        return holder.current ? fields : t('board.adopt.heldButMovedOn', { process: fields })
+    })
+    if (Date.now() - session.modifiedAt < LIVE_WRITE_WINDOW_MS) parts.push(t('board.adopt.writtenRecently'))
+    return parts.length > 0 ? parts.join('; ') : null
+}
+
 /**
  * Pick a Claude Code or Codex session that was started outside dugong.
  *
  * Single-select on purpose: the result is one task, and a task is one
- * conversation. A Claude session that already has a HAPI row, or whose
- * transcript is still being written by a live `claude`, is listed but not
- * selectable — seeing why it cannot be adopted beats it silently missing.
+ * conversation. A Claude session that already has a HAPI row, or that a live
+ * `claude` is writing, is listed but not selectable — seeing why it cannot be
+ * adopted beats it silently missing. One that only *might* be in use is
+ * selectable through "I confirm it is closed", never by a plain click.
  */
 export function AdoptSessionPicker(props: {
     api: ApiClient | null
@@ -150,15 +177,21 @@ export function AdoptSessionPicker(props: {
                 ) : (
                     <div className="divide-y divide-[var(--app-border)]">
                         {filtered.map((session) => {
-                            const blocked = Boolean(session.live) || Boolean(session.hapiSessionId)
+                            const confirmable = session.liveness === 'unsure' && !session.hapiSessionId
+                            const blocked = Boolean(session.liveness) || Boolean(session.hapiSessionId)
                             const selected = props.selectedId === session.id
+                            const reason = session.hapiSessionId ? null : livenessReason(session, t)
                             return (
                                 <label
                                     key={session.id}
                                     className={`flex items-start gap-2.5 px-3 py-2.5 ${
-                                        blocked
-                                            ? 'cursor-not-allowed opacity-60'
-                                            : 'pw-row-fill cursor-pointer'
+                                        // An unsure row stays readable: its reason and the
+                                        // confirmation are the point of showing it.
+                                        confirmable
+                                            ? ''
+                                            : blocked
+                                                ? 'cursor-not-allowed opacity-60'
+                                                : 'pw-row-fill cursor-pointer'
                                     }`}
                                 >
                                     <input
@@ -166,19 +199,21 @@ export function AdoptSessionPicker(props: {
                                         name="adopt-session"
                                         className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--app-fg)]"
                                         checked={selected}
-                                        disabled={blocked}
+                                        disabled={blocked && !(confirmable && selected)}
                                         onChange={() => props.onSelect(session)}
                                     />
                                     <span className="min-w-0 flex-1">
                                         <span className="flex items-baseline gap-2 text-[15px] text-[var(--app-fg)]">
                                             <span className="truncate">{session.title}</span>
-                                            {session.live ? (
-                                                <span className="pw-eyebrow shrink-0 text-[var(--app-badge-warning-text)]">
-                                                    {t('board.adopt.live')}
-                                                </span>
-                                            ) : session.hapiSessionId ? (
+                                            {/* A task first: its own agent being alive is why it
+                                                looks running, and the task is where to go. */}
+                                            {session.hapiSessionId ? (
                                                 <span className="pw-eyebrow shrink-0 text-[var(--app-hint)]">
                                                     {t('board.adopt.alreadyImported')}
+                                                </span>
+                                            ) : session.liveness ? (
+                                                <span className="pw-eyebrow shrink-0 text-[var(--app-badge-warning-text)]">
+                                                    {t(session.liveness === 'running' ? 'board.adopt.live' : 'board.adopt.maybeLive')}
                                                 </span>
                                             ) : null}
                                         </span>
@@ -189,6 +224,18 @@ export function AdoptSessionPicker(props: {
                                             {new Date(session.modifiedAt).toLocaleString()}
                                             {sessionExtent(session, t)}
                                         </span>
+                                        {reason ? (
+                                            <span className="mt-0.5 block text-xs text-[var(--app-badge-warning-text)]">{reason}</span>
+                                        ) : null}
+                                        {confirmable && !selected ? (
+                                            <button
+                                                type="button"
+                                                className="pw-underline mt-1 text-xs font-semibold text-[var(--app-fg)]"
+                                                onClick={() => props.onSelect({ ...session, force: true })}
+                                            >
+                                                {t('board.adopt.confirmClosed')}
+                                            </button>
+                                        ) : null}
                                     </span>
                                 </label>
                             )

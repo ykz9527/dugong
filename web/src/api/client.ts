@@ -528,6 +528,8 @@ export class ApiClient {
         cwd?: string | null
         machineId?: string | null
         permissionMode?: PermissionMode
+        /** The operator confirmed the session is closed. */
+        force?: boolean
     }): Promise<ClaudeImportSessionsResponse> {
         return await this.request<ClaudeImportSessionsResponse>('/api/claude/import-sessions', {
             method: 'POST',

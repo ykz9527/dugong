@@ -123,7 +123,8 @@ export function NewTaskDialog(props: {
                 nativeSessionId: adopted.id,
                 machineId,
                 title: title.trim() || undefined,
-                permissionMode
+                permissionMode,
+                force: adopted.force
             }, workdir.trim())
             return
         }

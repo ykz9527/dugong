@@ -313,6 +313,34 @@ export const ClaudeImportedMessageSchema = z.object({
     content: ClaudeImportedMessageContentSchema
 })
 
+/**
+ * A running `claude` process tied to one session, and what ties it.
+ *
+ * Carried to the picker as evidence: "still running" with no reason reads as
+ * a bug when the operator believes they closed the session, and the reason
+ * (a terminal left open, another dugong's agent) is usually what they need.
+ */
+export const ClaudeSessionHolderSchema = z.object({
+    pid: z.number().int().positive(),
+    /**
+     * Whether this is the session the process is writing now.
+     *
+     * True when Claude's own per-process record names it, or when the process
+     * holds the session's scratch directory and left no record to say
+     * otherwise. False when the process only still holds the scratch
+     * directory of a session it has since left with `/resume` or `/clear`.
+     */
+    current: z.boolean(),
+    /** Claude's `entrypoint`: `cli` from a terminal, `sdk-ts` when a program drives it. */
+    entrypoint: z.string().nullable(),
+    /** What started the process: a dugong/hapi binary's name, `terminal`, or unknown. */
+    launcher: z.string().nullable(),
+    /** Claude's own `status` for the process (`idle`, `busy`, …). */
+    status: z.string().nullable(),
+    /** When the process last updated its record. */
+    statusAt: z.number().nullable()
+})
+
 export const ClaudeLocalSessionSummarySchema = z.object({
     id: z.string().min(1),
     title: z.string(),
@@ -330,14 +358,17 @@ export const ClaudeLocalSessionSummarySchema = z.object({
     /** Transcript size in bytes; what the picker shows when it has no count. */
     size: z.number().int().nonnegative().optional(),
     /**
-     * Whether a `claude` process still holds this transcript open.
+     * Whether a running `claude` is writing this session now: some holder
+     * has `current` set.
      *
      * Decided on the machine that owns the file, because only there can the
      * question be answered properly. Absent when that machine could not tell
      * (an older runner, or a platform without a process table to read), and
      * the hub falls back to judging by how recently the file was written.
      */
-    live: z.boolean().optional()
+    live: z.boolean().optional(),
+    /** Every process tied to the session; absent when none is. */
+    holders: z.array(ClaudeSessionHolderSchema).optional()
 })
 
 /** A resume point inside one transcript: a byte offset at a line boundary,
@@ -383,6 +414,7 @@ export const ListClaudeSessionsRpcResponseSchema = z.union([
 
 export type ClaudeImportedMessageContent = z.infer<typeof ClaudeImportedMessageContentSchema>
 export type ClaudeImportedMessage = z.infer<typeof ClaudeImportedMessageSchema>
+export type ClaudeSessionHolder = z.infer<typeof ClaudeSessionHolderSchema>
 export type ClaudeLocalSessionSummary = z.infer<typeof ClaudeLocalSessionSummarySchema>
 export type ClaudeLocalSessionWithMessages = z.infer<typeof ClaudeLocalSessionWithMessagesSchema>
 export type ListClaudeSessionsRpcRequest = z.infer<typeof ListClaudeSessionsRpcRequestSchema>

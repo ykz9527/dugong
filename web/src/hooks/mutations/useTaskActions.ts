@@ -38,6 +38,8 @@ export type AdoptTaskInput = {
     machineId: string
     title?: string
     permissionMode?: PermissionMode
+    /** Claude only: the operator confirmed a possibly-open session is closed. */
+    force?: boolean
 }
 
 /** Write the native transcript into a HAPI session; returns that session's id.
@@ -58,7 +60,8 @@ async function importAdoptedSession(api: ApiClient, input: AdoptTaskInput, faile
     const imported = await api.importClaudeSessions({
         sessionIds: [input.nativeSessionId],
         machineId: input.machineId,
-        permissionMode: input.permissionMode
+        permissionMode: input.permissionMode,
+        force: input.force
     })
     const result = imported.results[0]
     if (!result?.hapiSessionId) {

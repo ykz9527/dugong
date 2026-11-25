@@ -178,7 +178,7 @@ describe('Claude session adoption', () => {
         expect((stored?.metadata as Record<string, unknown>).worktree).toEqual(origin)
     })
 
-    it('refuses a transcript a live claude still owns', () => {
+    it('asks before adopting a transcript written in the last minute', () => {
         // Adopting under a running agent races it for the tail of the JSONL,
         // and Start would then resume a session that is already running.
         const { store, engine } = setup()
@@ -190,7 +190,8 @@ describe('Claude session adoption', () => {
             transcript: transcript('native-live', [userRow('native-live', 'u1', 'hi', Date.now())], Date.now())
         })
 
-        expect(result.error?.code).toBe('session_live')
+        expect(result.error?.code).toBe('session_maybe_live')
+        expect(result.error?.message).toContain('within the last minute')
         expect(result.hapiSessionId).toBeUndefined()
     })
 
@@ -205,10 +206,33 @@ describe('Claude session adoption', () => {
             engine,
             namespace: 'default',
             machine: machine('box-1'),
-            transcript: { ...stale, live: true }
+            transcript: { ...stale, live: true },
+            // Confirming "it is closed" cannot overrule a process writing it.
+            force: true
         })
 
         expect(result.error?.code).toBe('session_live')
+    })
+
+    it('names the process that holds a session, and lets a confirmation past a stale hold', () => {
+        // A terminal claude that `/resume`d elsewhere still holds the scratch
+        // directory of the session it left; that one is probably closed, but
+        // only the operator can say so.
+        const { store, engine } = setup()
+        const left = {
+            ...transcript('native-left', [userRow('native-left', 'u1', 'hi', SETTLED)]),
+            live: false,
+            holders: [{ pid: 3065168, current: false, entrypoint: 'cli', launcher: 'terminal', status: 'idle', statusAt: null }]
+        }
+        const options = { store, engine, namespace: 'default', machine: machine('box-1'), transcript: left }
+
+        const asked = importClaudeSession(options)
+        expect(asked.error?.code).toBe('session_maybe_live')
+        expect(asked.error?.message).toContain('process 3065168 (started by a terminal)')
+
+        const confirmed = importClaudeSession({ ...options, force: true })
+        expect(confirmed.error).toBeUndefined()
+        expect(confirmed.appended).toBe(1)
     })
 
     it('still refuses a freshly written transcript the machine could not account for', () => {
@@ -230,7 +254,7 @@ describe('Claude session adoption', () => {
             transcript: { ...fresh, live: false }
         })
 
-        expect(result.error?.code).toBe('session_live')
+        expect(result.error?.code).toBe('session_maybe_live')
     })
 
     it('adopts a settled transcript once nothing claims it', () => {

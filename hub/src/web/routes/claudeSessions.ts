@@ -36,15 +36,16 @@ const ImportClaudeSessionsBodySchema = z.object({
      *  not refused, the same as one claude cannot honour. */
     permissionMode: z.string().max(64).optional(),
     machineId: z.string().trim().max(200).optional(),
-    cwd: z.string().trim().max(4096).optional()
+    cwd: z.string().trim().max(4096).optional(),
+    /** The operator confirmed the session is closed. Overrules weak evidence
+     *  only; a process writing the session still refuses the import. */
+    force: z.boolean().optional()
 })
 
 /**
- * How recently a transcript must have been written to count as "still being
- * held by a live `claude` process". Deliberately a heuristic: short of holding
- * an OS-level file lock there is no portable way to ask who has the JSONL
- * open, and refusing to adopt a session out from under a running agent is
- * worth a few false positives on a session someone merely paused in.
+ * How recently a transcript must have been written to count as possibly still
+ * in use. The process scan cannot see every writer, so a fresh write is
+ * evidence too — but weak evidence, which an operator may overrule.
  */
 const LIVE_TRANSCRIPT_WINDOW_MS = 60_000
 
@@ -92,7 +93,8 @@ async function fetchClaudeTranscript(
     engine: SyncEngine,
     machineId: string,
     cwd: string | null,
-    sessionId: string
+    sessionId: string,
+    force: boolean
 ): Promise<TranscriptFetch> {
     const readPage = async (cursor?: ClaudeTranscriptCursor) => {
         const result = await engine.listClaudeSessionsForMachine(machineId, cwd, [sessionId], cursor)
@@ -108,8 +110,8 @@ async function fetchClaudeTranscript(
         return { error: { code: 'machine_error', message: describeListFailure(cause) } }
     }
     if (!first) return null
-    // A live transcript is refused anyway; no point reading the rest of it.
-    if (isLiveTranscript(first)) return { transcript: first }
+    // A refused transcript needs no more pages.
+    if (adoptRefusal(first, force)) return { transcript: first }
 
     const { nextCursor, ...head } = first
     const messages = [...head.messages]
@@ -155,8 +157,8 @@ function lastUserText(messages: ClaudeLocalSessionWithMessages['messages']): str
 
 export type ClaudeSessionListItem = ClaudeLocalSessionSummary & {
     hapiSessionId?: string
-    /** True while the transcript still looks like a live `claude` is writing it. */
-    live?: boolean
+    /** Absent when nothing suggests the session is in use; see `classifyLiveness`. */
+    liveness?: ClaudeLiveness
 }
 
 export type ClaudeImportResult = {
@@ -180,21 +182,62 @@ function storedMetadata(session: StoredSession): Record<string, unknown> {
 /**
  * Whether adopting this session would race a running agent.
  *
- * Two signals, deliberately combined with OR rather than by preference. The
- * machine can sometimes prove a session is live by finding the process that
- * owns it, and that proof is worth taking. But it proves only presence: the
- * agents it cannot account for are still running, so absence of proof still
- * has to fall back on how recently the transcript was written.
+ * - `running`: a process is writing it now. Never adoptable; the operator has
+ *   to close that process. A runner too old to name holders sends a bare
+ *   `live: true`, which means the same.
+ * - `unsure`: nothing provably writes it, but something suggests it might — a
+ *   process still holds the scratch directory of a session it has since left,
+ *   or the transcript was written within the last minute. The process scan
+ *   cannot see every writer, so this is not "safe": the operator is asked, and
+ *   only their confirmation (`force`) lets it through.
  *
  * Reading a miss as "safe" would be the dangerous direction of wrong — it
  * hands an operator a session another agent is actively writing.
  */
-function isLiveTranscript(
-    session: { live?: boolean; modifiedAt: number },
+export type ClaudeLiveness = 'running' | 'unsure'
+
+function classifyLiveness(
+    session: Pick<ClaudeLocalSessionSummary, 'live' | 'holders' | 'modifiedAt'>,
     now = Date.now()
-): boolean {
-    if (session.live === true) return true
-    return now - session.modifiedAt < LIVE_TRANSCRIPT_WINDOW_MS
+): ClaudeLiveness | null {
+    if (session.live === true) return 'running'
+    if ((session.holders?.length ?? 0) > 0) return 'unsure'
+    if (now - session.modifiedAt < LIVE_TRANSCRIPT_WINDOW_MS) return 'unsure'
+    return null
+}
+
+/** The evidence, in words, for an error an operator will read. */
+function describeHolders(session: Pick<ClaudeLocalSessionSummary, 'holders' | 'modifiedAt'>, now = Date.now()): string {
+    const holders = session.holders ?? []
+    const parts = holders.map((holder) => {
+        const by = holder.launcher === 'terminal' ? 'a terminal' : holder.launcher ?? 'an unknown parent'
+        return holder.current
+            ? `process ${holder.pid} (started by ${by}) is writing it`
+            : `process ${holder.pid} (started by ${by}) still holds it but is writing another session`
+    })
+    if (now - session.modifiedAt < LIVE_TRANSCRIPT_WINDOW_MS) parts.push('it was written within the last minute')
+    return parts.join('; ')
+}
+
+function adoptRefusal(
+    session: Pick<ClaudeLocalSessionSummary, 'live' | 'holders' | 'modifiedAt'>,
+    force: boolean
+): { code: string; message: string } | null {
+    const liveness = classifyLiveness(session)
+    if (liveness === 'running') {
+        const evidence = describeHolders(session)
+        return {
+            code: 'session_live',
+            message: `This Claude session is still running${evidence ? ` (${evidence})` : ''}. Exit it, then adopt it.`
+        }
+    }
+    if (liveness === 'unsure' && !force) {
+        return {
+            code: 'session_maybe_live',
+            message: `This Claude session may still be in use (${describeHolders(session)}). Confirm it is closed to adopt it.`
+        }
+    }
+    return null
 }
 
 function resolveClaudeMachine(
@@ -344,21 +387,16 @@ export function importClaudeSession(options: {
     transcript: ClaudeLocalSessionWithMessages
     existingSession?: StoredSession | null
     permissionMode?: PermissionMode | null
+    /** The operator confirmed the session is closed; see `adoptRefusal`. */
+    force?: boolean
 }): ClaudeImportResult {
     const { store, engine, namespace, machine, transcript, existingSession, permissionMode } = options
 
     // Adopting a transcript a live `claude` still owns would race that process
     // for the tail of the file, and starting the card afterwards would resume a
     // session that is already running. Make the operator close it first.
-    if (isLiveTranscript(transcript)) {
-        return {
-            claudeSessionId: transcript.id,
-            error: {
-                code: 'session_live',
-                message: 'This Claude session looks like it is still running. Exit it, then adopt it.'
-            }
-        }
-    }
+    const refusal = adoptRefusal(transcript, options.force ?? false)
+    if (refusal) return { claudeSessionId: transcript.id, error: refusal }
 
     let stored = existingSession === undefined
         ? importedClaudeSessionsById(store, namespace, machine.id).get(transcript.id) ?? null
@@ -489,10 +527,11 @@ export function createClaudeSessionRoutes(options: {
         const importedByClaudeId = importedClaudeSessionsById(options.store, namespace, machine.id)
         const sessions: ClaudeSessionListItem[] = result.sessions.map((summary) => {
             const imported = importedByClaudeId.get(summary.id)
+            const liveness = classifyLiveness(summary)
             return {
                 ...summary,
                 ...(imported ? { hapiSessionId: imported.id } : {}),
-                ...(isLiveTranscript(summary) ? { live: true } : {})
+                ...(liveness ? { liveness } : {})
             }
         })
         return c.json({ success: true, sessions, machineId: machine.id })
@@ -523,7 +562,7 @@ export function createClaudeSessionRoutes(options: {
         if (!engine || !machine) return c.json({ success: false, error: 'No online machine available for Claude session adoption', results: [] }, 503)
         const results: ClaudeImportResult[] = []
         for (const sessionId of uniqueSessionIds) {
-            const fetched = await fetchClaudeTranscript(engine, machine.id, body.cwd || null, sessionId)
+            const fetched = await fetchClaudeTranscript(engine, machine.id, body.cwd || null, sessionId, body.force ?? false)
             if (!fetched) {
                 results.push({ claudeSessionId: sessionId, error: { code: 'not_found', message: 'Claude session transcript not found' } })
                 continue
@@ -542,7 +581,8 @@ export function createClaudeSessionRoutes(options: {
                 machine,
                 transcript: fetched.transcript,
                 existingSession,
-                permissionMode: requestedPermissionMode
+                permissionMode: requestedPermissionMode,
+                force: body.force ?? false
             })))
         }
         // Every transcript failed on the machine side: answer as the machine

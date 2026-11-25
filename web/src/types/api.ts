@@ -1,3 +1,4 @@
+import type { ClaudeSessionHolder } from '@hapi/protocol/apiTypes'
 import type {
     CodexCollaborationMode,
     CopilotAgentMode,
@@ -292,11 +293,15 @@ export type ClaudeLocalSessionSummary = {
     cwd?: string | null
     file: string
     modifiedAt: number
-    messageCount: number
+    messageCount?: number
+    size?: number
     /** Set once this native session has a row in the hub. */
     hapiSessionId?: string
-    /** The transcript still looks like a running `claude` owns it. */
-    live?: boolean
+    /** `running`: a process writes it now. `unsure`: something suggests it
+     *  might be in use; the operator may confirm it is closed. */
+    liveness?: 'running' | 'unsure'
+    /** The processes tied to the session, shown as the reason. */
+    holders?: ClaudeSessionHolder[]
 }
 
 export type ClaudeLocalSessionsResponse = {
