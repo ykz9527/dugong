@@ -38,6 +38,65 @@ function isNotBoundError(error: unknown): boolean {
 }
 
 const ACCESS_TOKEN_PREFIX = 'hapi_access_token::'
+const SESSION_PREFIX = 'dugong_session::'
+// A cached session is only reused with this much life left; the refresh timer
+// below renews it a minute before expiry anyway.
+const SESSION_REUSE_MIN_TTL_MS = 5 * 60_000
+
+type CachedSession = { source: string; token: string; user: AuthResponse['user'] }
+
+/** Which login a cached session came from, without storing the secret twice. */
+function sourceFingerprint(source: AuthSource): string | null {
+    if (source.type !== 'accessToken') return null
+    let hash = 0x811c9dc5
+    for (let i = 0; i < source.token.length; i += 1) {
+        hash = Math.imul(hash ^ source.token.charCodeAt(i), 0x01000193)
+    }
+    return (hash >>> 0).toString(36)
+}
+
+/**
+ * The JWT from the last `/api/auth`, kept across page loads. Without it every
+ * open waits one full round trip for a fresh JWT before it can ask for any
+ * data - about half a second on a phone through the relay.
+ */
+function readCachedSession(baseUrl: string, source: AuthSource): CachedSession | null {
+    const fingerprint = sourceFingerprint(source)
+    if (!fingerprint) return null
+    try {
+        const cached = JSON.parse(localStorage.getItem(`${SESSION_PREFIX}${baseUrl}`) ?? 'null') as CachedSession | null
+        if (!cached || cached.source !== fingerprint || typeof cached.token !== 'string') return null
+        const expMs = decodeJwtExpMs(cached.token)
+        if (!expMs || expMs - Date.now() < SESSION_REUSE_MIN_TTL_MS) return null
+        return cached
+    } catch {
+        return null
+    }
+}
+
+/** Logout: drop the cached JWT along with the access token it came from. */
+export function clearCachedSession(baseUrl: string): void {
+    try {
+        localStorage.removeItem(`${SESSION_PREFIX}${baseUrl}`)
+    } catch {
+        // Ignore storage errors (private mode, full quota, etc.)
+    }
+}
+
+function writeCachedSession(baseUrl: string, source: AuthSource, auth: AuthResponse | null): void {
+    const fingerprint = sourceFingerprint(source)
+    if (!fingerprint) return
+    try {
+        if (auth) {
+            const cached: CachedSession = { source: fingerprint, token: auth.token, user: auth.user }
+            localStorage.setItem(`${SESSION_PREFIX}${baseUrl}`, JSON.stringify(cached))
+        } else {
+            localStorage.removeItem(`${SESSION_PREFIX}${baseUrl}`)
+        }
+    } catch {
+        // Ignore storage errors (private mode, full quota, etc.)
+    }
+}
 
 function rememberAccessToken(baseUrl: string, accessToken: string): void {
     try {
@@ -102,6 +161,7 @@ export function useAuth(authSource: AuthSource | null, baseUrl: string): {
             try {
                 const client = new ApiClient('', { baseUrl })
                 const auth = await client.authenticate(getAuthPayload(currentSource))
+                writeCachedSession(baseUrl, currentSource, auth)
                 tokenRef.current = auth.token
                 setToken(auth.token)
                 setUser(auth.user)
@@ -119,6 +179,7 @@ export function useAuth(authSource: AuthSource | null, baseUrl: string): {
                 }
                 const isExpired = expMs ? Date.now() >= expMs : false
                 if (options?.hardFail || isExpired) {
+                    writeCachedSession(baseUrl, currentSource, null)
                     tokenRef.current = null
                     setToken(null)
                     setUser(null)
@@ -187,12 +248,36 @@ export function useAuth(authSource: AuthSource | null, baseUrl: string): {
             : null
     ), [baseUrl, refreshAuth, hasToken])
 
+    // Declared before the auth effect: on a base URL change this reset must
+    // run first, or it would wipe the cached session the auth effect restores.
+    useEffect(() => {
+        tokenRef.current = null
+        refreshPromiseRef.current = null
+        lastRefreshAttemptRef.current = 0
+        setToken(null)
+        setUser(null)
+        setError(null)
+        setNeedsBinding(false)
+    }, [baseUrl])
+
     useEffect(() => {
         let isCancelled = false
 
         async function run() {
             if (!authSource) {
                 // No auth source - waiting for login
+                setNeedsBinding(false)
+                return
+            }
+
+            const cached = readCachedSession(baseUrl, authSource)
+            if (cached) {
+                // A hub that no longer accepts it answers 401, and the
+                // client's onUnauthorized fetches a fresh one.
+                tokenRef.current = cached.token
+                setToken(cached.token)
+                setUser(cached.user)
+                setError(null)
                 setNeedsBinding(false)
                 return
             }
@@ -204,6 +289,7 @@ export function useAuth(authSource: AuthSource | null, baseUrl: string): {
                 const client = new ApiClient('', { baseUrl }) // temporary for auth call
                 const auth = await client.authenticate(getAuthPayload(authSource))
                 if (isCancelled) return
+                writeCachedSession(baseUrl, authSource, auth)
                 setToken(auth.token)
                 setUser(auth.user)
                 setNeedsBinding(false)
@@ -231,16 +317,6 @@ export function useAuth(authSource: AuthSource | null, baseUrl: string): {
             isCancelled = true
         }
     }, [authSource, baseUrl])
-
-    useEffect(() => {
-        tokenRef.current = null
-        refreshPromiseRef.current = null
-        lastRefreshAttemptRef.current = 0
-        setToken(null)
-        setUser(null)
-        setError(null)
-        setNeedsBinding(false)
-    }, [baseUrl])
 
     useEffect(() => {
         if (!token || !authSource) {

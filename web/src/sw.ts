@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
-import { precacheAndRoute } from 'workbox-precaching'
-import { registerRoute } from 'workbox-routing'
+import { createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching'
+import { NavigationRoute, registerRoute } from 'workbox-routing'
 import { CacheFirst, NetworkFirst } from 'workbox-strategies'
 import { ExpirationPlugin } from 'workbox-expiration'
 import {
@@ -30,6 +30,16 @@ type PushPayload = {
 }
 
 precacheAndRoute(self.__WB_MANIFEST)
+
+// Every route is the same SPA shell. Answer page loads from the precache
+// instead of asking the hub for index.html each time: over the relay that
+// request is a full round trip (~0.5 s on a phone) before any script starts.
+// The shell always matches the precached assets it names; a new deploy
+// arrives with the next service worker and the update prompt, as before.
+registerRoute(new NavigationRoute(
+    createHandlerBoundToURL(new URL('index.html', self.registration.scope).href),
+    { denylist: [/\/api\//, /\/cli\//, /\/socket\.io\//, /\/health$/] }
+))
 
 registerRoute(
     ({ url }) => url.pathname === '/api/sessions',

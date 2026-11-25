@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getTelegramWebApp, isTelegramEnvironment } from './useTelegram'
-import type { AuthSource } from './useAuth'
+import { clearCachedSession, type AuthSource } from './useAuth'
 
 const ACCESS_TOKEN_PREFIX = 'hapi_access_token::'
 
@@ -142,8 +142,9 @@ export function useAuthSource(baseUrl: string): {
 
     const clearAuth = useCallback(() => {
         clearStoredAccessToken(accessTokenKey)
+        clearCachedSession(baseUrl)
         setAuthSource(null)
-    }, [accessTokenKey])
+    }, [accessTokenKey, baseUrl])
 
     return {
         authSource,

@@ -30,7 +30,7 @@ const h = vi.hoisted(() => {
             this.code = code
         }
     }
-    return { MockApiClient, MockApiError }
+    return { MockApiClient, MockApiError, authCalls: () => authCount }
 })
 
 vi.mock('@/api/client', () => ({ ApiClient: h.MockApiClient, ApiError: h.MockApiError }))
@@ -75,5 +75,36 @@ describe('useAuth — api identity stability across token refresh (issue #927)',
         // NOT re-run / remount. On current code `api` is rebuilt because `token` is a useMemo
         // dep, which drives the Voice-remount spam + per-image refetch storm. This fails today.
         expect(result.current.api).toBe(api1 as unknown as typeof result.current.api)
+    })
+})
+
+describe('useAuth — cached session', () => {
+    function jwt(expSeconds: number): string {
+        const payload = btoa(JSON.stringify({ uid: 1, exp: expSeconds })).replace(/=+$/, '')
+        return `eyJhbGciOiJIUzI1NiJ9.${payload}.sig`
+    }
+
+    it('reuses a cached JWT on the next load instead of waiting for /api/auth', async () => {
+        const baseUrl = 'http://cache.test'
+        const authSource = { type: 'accessToken' as const, token: 'seed' }
+        const first = renderHook(() => useAuth(authSource, baseUrl))
+        await waitFor(() => expect(first.result.current.token).not.toBeNull())
+        first.unmount()
+
+        // The mock hands out non-JWT tokens; store a live one as /api/auth would.
+        const key = `dugong_session::${baseUrl}`
+        const cached = JSON.parse(localStorage.getItem(key) ?? 'null')
+        expect(cached?.token).toMatch(/^token-/)
+        const live = jwt(Math.floor(Date.now() / 1000) + 3600)
+        localStorage.setItem(key, JSON.stringify({ ...cached, token: live }))
+
+        const callsBefore = h.authCalls()
+        const second = renderHook(() => useAuth(authSource, baseUrl))
+        await waitFor(() => expect(second.result.current.token).toBe(live))
+        expect(h.authCalls()).toBe(callsBefore)
+
+        // A different access token must not pick up that session.
+        const other = renderHook(() => useAuth({ type: 'accessToken', token: 'other' }, baseUrl))
+        await waitFor(() => expect(other.result.current.token).toMatch(/^token-/))
     })
 })
