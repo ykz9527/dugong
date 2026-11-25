@@ -4,6 +4,7 @@ import { basename, dirname, join, relative } from 'node:path'
 import { homedir } from 'node:os'
 import { AGENT_MESSAGE_PAYLOAD_TYPE } from '@hapi/protocol'
 import { isCodexSubagentSource } from '@/codex/utils/codexSessionMetadata'
+import { readTranscriptEnds } from './transcriptEnds'
 
 const DEFAULT_CODEX_SESSION_SCAN_LIMIT = 200
 
@@ -376,39 +377,182 @@ function parseCodexLocalSession(
     return includeMessages ? { ...summary, messages: deduplicateAdjacentImportedMessages(messages) } : summary
 }
 
-function listLocalCodexSessions(includeMessages: false, limit?: number): LocalCodexSessionSummary[]
-function listLocalCodexSessions(includeMessages: true, limit?: number): LocalCodexSessionWithMessages[]
-function listLocalCodexSessions(includeMessages: boolean, limit = DEFAULT_CODEX_SESSION_SCAN_LIMIT): Array<LocalCodexSessionSummary | LocalCodexSessionWithMessages> {
+type CodexSessionFileCandidate = {
+    file: string
+    modifiedAt: number
+    size: number
+}
+
+/** Every rollout file, newest first. Stat only — nothing is opened. */
+function collectSortedCodexSessionFiles(): CodexSessionFileCandidate[] {
     const files: string[] = []
     for (const root of getCodexSessionRoots()) collectJsonlFiles(root, files)
-    const sessionIndexTitles = readCodexSessionIndexTitles()
-    const deduped = new Map<string, LocalCodexSessionSummary | LocalCodexSessionWithMessages>()
-    for (const file of files) {
-        const session = parseCodexLocalSession(file, includeMessages, sessionIndexTitles)
-        if (!session) continue
-        const previous = deduped.get(session.id)
-        if (!previous || previous.modifiedAt < session.modifiedAt) deduped.set(session.id, session)
+    return files.flatMap((file) => {
+        try {
+            const stats = statSync(file)
+            return [{ file, modifiedAt: stats.mtimeMs, size: stats.size }]
+        } catch {
+            return []
+        }
+    }).sort((a, b) => b.modifiedAt - a.modifiedAt)
+}
+
+/** What a listing row needs from one rollout, before the index title is applied. */
+type CodexSummaryParts = Omit<LocalCodexSessionSummary, 'title'> & {
+    changedTitle: string | null
+    firstUserMessage: string | null
+}
+
+/** By rollout path, valid while size and mtime are unchanged. */
+const summaryCache = new Map<string, { size: number; modifiedAt: number; parts: CodexSummaryParts | null }>()
+const SUMMARY_CACHE_LIMIT = 5000
+
+/**
+ * A listing-only look at one rollout: its head and tail, never the middle.
+ *
+ * The session's identity and first prompt sit in the head, the latest
+ * `change_title` and last prompt near the end. Reading whole rollouts to get
+ * them is what made one machine's listing read 1.7 GB of rollouts — long
+ * enough, on a busy disk, for the runner to miss its heartbeat and be dropped
+ * by the hub with the reply still unsent.
+ */
+async function summariseCodexSession(candidate: CodexSessionFileCandidate): Promise<CodexSummaryParts | null> {
+    const cached = summaryCache.get(candidate.file)
+    if (cached && cached.size === candidate.size && cached.modifiedAt === candidate.modifiedAt) return cached.parts
+
+    const ends = await readTranscriptEnds(candidate.file)
+    if (!ends) return null
+    const parts = summariseCodexLines(candidate, ends.head, ends.whole ? null : ends.tail)
+
+    if (summaryCache.size >= SUMMARY_CACHE_LIMIT) summaryCache.clear()
+    summaryCache.set(candidate.file, { size: candidate.size, modifiedAt: candidate.modifiedAt, parts })
+    return parts
+}
+
+/** `tail` is null when `head` is the whole file. */
+function summariseCodexLines(
+    candidate: CodexSessionFileCandidate,
+    head: string[],
+    tail: string[] | null
+): CodexSummaryParts | null {
+    let sessionId: string | null = null
+    let cwd: string | null = null
+    let originator: string | null = null
+    let cliVersion: string | null = null
+    let source: string | null = null
+    let threadSource: string | null = null
+    let forkedFromId: string | null = null
+    let firstUserMessage: string | null = null
+
+    for (const line of head.slice(0, 200)) {
+        let record: Record<string, unknown> | null
+        try { record = asRecord(JSON.parse(line)) } catch { continue }
+        if (!record) continue
+        if (record.type === 'session_meta') {
+            const payload = asRecord(record.payload)
+            if (isCodexSubagentSource(payload?.source)) return null
+            if (!sessionId && typeof payload?.id === 'string') sessionId = payload.id
+            if (!cwd && typeof payload?.cwd === 'string') cwd = payload.cwd
+            if (!originator && typeof payload?.originator === 'string') originator = payload.originator
+            if (!cliVersion && typeof payload?.cli_version === 'string') cliVersion = payload.cli_version
+            if (!source && typeof payload?.source === 'string') source = payload.source
+            if (!threadSource && typeof payload?.thread_source === 'string') threadSource = payload.thread_source
+            if (!forkedFromId && typeof payload?.forked_from_id === 'string') forkedFromId = payload.forked_from_id
+        }
+        if (!firstUserMessage && record.type === 'response_item') {
+            const payload = asRecord(record.payload)
+            if (payload?.type === 'message' && payload.role === 'user') {
+                const text = extractCodexText(payload.content)
+                if (text && !shouldIgnoreSyntheticUserMessage(text)) firstUserMessage = text
+            }
+        }
     }
-    return Array.from(deduped.values()).sort((a, b) => b.modifiedAt - a.modifiedAt).slice(0, limit)
+
+    sessionId = sessionId ?? inferSessionIdFromFileName(candidate.file)
+    if (!sessionId) return null
+    return {
+        id: sessionId,
+        // The latest title is the one nearest the end; a title set early in
+        // a long session is only in the head.
+        changedTitle: (tail ? getLatestCodexChangedTitle(tail) : null) ?? getLatestCodexChangedTitle(head),
+        firstUserMessage,
+        // Never the head's for a partial read: its last prompt is usually the
+        // first one, and would pass for the latest.
+        lastUserMessage: getLatestCodexUserMessage(tail ?? head),
+        cwd,
+        file: candidate.file,
+        modifiedAt: candidate.modifiedAt,
+        originator,
+        cliVersion,
+        source,
+        threadSource,
+        forkedFromId
+    }
 }
 
-export function listLocalCodexSessionSummaries(limit = DEFAULT_CODEX_SESSION_SCAN_LIMIT): LocalCodexSessionSummary[] {
-    return listLocalCodexSessions(false, limit)
+export type ListLocalCodexSessionsOptions = {
+    limit?: number
+    /** Whether a session may be shown at all; applied before `limit` counts it. */
+    accept?: (session: LocalCodexSessionSummary) => boolean | Promise<boolean>
+    /**
+     * Only these sessions. Rollouts whose path names one of the ids are opened
+     * first — Codex puts the id in every rollout's name — so a lookup is
+     * normally one file; the rest are a fallback for a renamed rollout.
+     */
+    ids?: ReadonlySet<string>
 }
 
-export function listLocalCodexSessionsWithMessages(limit = DEFAULT_CODEX_SESSION_SCAN_LIMIT): LocalCodexSessionWithMessages[] {
-    return listLocalCodexSessions(true, limit)
+function pathNamesOneOf(file: string, ids: ReadonlySet<string>): boolean {
+    for (const id of ids) if (file.includes(id)) return true
+    return false
 }
 
-export function listLocalCodexSessionsWithMessagesByIds(ids: Set<string>): LocalCodexSessionWithMessages[] {
+/**
+ * Newest sessions first, reading as few rollouts as the answer needs: the scan
+ * stops once `limit` sessions are accepted, so an old rollout is never opened
+ * just to be cut from the end of a sorted list.
+ */
+export async function listLocalCodexSessionSummaries(options: ListLocalCodexSessionsOptions = {}): Promise<LocalCodexSessionSummary[]> {
+    const limit = options.limit ?? DEFAULT_CODEX_SESSION_SCAN_LIMIT
+    if (limit <= 0) return []
+    const sessionIndexTitles = readCodexSessionIndexTitles()
+    const seen = new Set<string>()
+    const sessions: LocalCodexSessionSummary[] = []
+    let candidates = collectSortedCodexSessionFiles()
+    if (options.ids) {
+        const ids = options.ids
+        candidates = [
+            ...candidates.filter((candidate) => pathNamesOneOf(candidate.file, ids)),
+            ...candidates.filter((candidate) => !pathNamesOneOf(candidate.file, ids))
+        ]
+    }
+    for (const candidate of candidates) {
+        const parts = await summariseCodexSession(candidate)
+        // Newest first, so the first rollout seen for an id is its latest.
+        if (!parts || seen.has(parts.id)) continue
+        seen.add(parts.id)
+        if (options.ids && !options.ids.has(parts.id)) continue
+        const { changedTitle, firstUserMessage, ...rest } = parts
+        const summary: LocalCodexSessionSummary = {
+            ...rest,
+            title: getCodexSessionTitle(rest.cwd, rest.id, sessionIndexTitles.get(rest.id)?.threadName ?? null, changedTitle, firstUserMessage)
+        }
+        if (options.accept && !(await options.accept(summary))) continue
+        sessions.push(summary)
+        if (sessions.length >= limit) break
+    }
+    return sessions
+}
+
+/** The named sessions with their full conversation, for import. */
+export async function listLocalCodexSessionsWithMessagesByIds(ids: Set<string>): Promise<LocalCodexSessionWithMessages[]> {
     if (ids.size === 0) return []
     const sessionIndexTitles = readCodexSessionIndexTitles()
-    return listLocalCodexSessionSummaries(Number.MAX_SAFE_INTEGER)
-        .filter((session) => ids.has(session.id))
+    const found = await listLocalCodexSessionSummaries({ limit: ids.size, ids })
+    return found
         .map((session) => parseCodexLocalSession(session.file, true, sessionIndexTitles))
-        .filter((session): session is LocalCodexSessionWithMessages => Boolean(session))
+        .filter((session): session is LocalCodexSessionWithMessages => Boolean(session) && 'messages' in session!)
 }
-
 
 export async function archiveLocalCodexSession(sessionId: string, options: ArchiveLocalCodexSessionOptions = {}): Promise<{ success: true; archivedPath: string } | { success: false; error: string }> {
     const normalizedId = sessionId.trim()
@@ -416,8 +560,7 @@ export async function archiveLocalCodexSession(sessionId: string, options: Archi
 
     const sessionsRoot = getCodexSessionRoots()[0]
     const archivedRoot = join(getCodexHome(), 'archived_sessions')
-    const sessions = listLocalCodexSessionSummaries(DEFAULT_CODEX_SESSION_SCAN_LIMIT * 5)
-    const target = sessions.find((session) => session.id === normalizedId)
+    const [target] = await listLocalCodexSessionSummaries({ limit: 1, ids: new Set([normalizedId]) })
     if (!target) return { success: false, error: 'Codex session not found' }
     if (options.canArchive && !(await options.canArchive(target))) {
         return { success: false, error: 'Codex session is outside workspace roots' }

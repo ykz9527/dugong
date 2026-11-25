@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { archiveLocalCodexSession, listLocalCodexSessionSummaries, listLocalCodexSessionsWithMessagesByIds } from './codexSessions'
@@ -22,7 +22,7 @@ describe('archiveLocalCodexSession', () => {
             JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'hello' }] } })
         ].join('\n'))
 
-        const sessions = listLocalCodexSessionSummaries()
+        const sessions = await listLocalCodexSessionSummaries()
         expect(sessions).toHaveLength(1)
         expect(sessions[0]?.id).toBe('12345678-1234-1234-1234-123456789abc')
 
@@ -63,7 +63,7 @@ describe('listLocalCodexSessionSummaries', () => {
         else process.env.CODEX_HOME = originalCodexHome
     })
 
-    it('parses original and fork metadata from session_meta', () => {
+    it('parses original and fork metadata from session_meta', async () => {
         const root = mkdtempSync(join(tmpdir(), 'codex-home-'))
         process.env.CODEX_HOME = root
         const sessionsDir = join(root, 'sessions', '2026', '06', '27')
@@ -99,7 +99,7 @@ describe('listLocalCodexSessionSummaries', () => {
             JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'fork hello' }] } })
         ].join('\n'))
 
-        const sessions = listLocalCodexSessionSummaries()
+        const sessions = await listLocalCodexSessionSummaries()
         const original = sessions.find((session) => session.id === 'original-session-id')
         const fork = sessions.find((session) => session.id === 'fork-session-id')
 
@@ -117,7 +117,7 @@ describe('listLocalCodexSessionSummaries', () => {
         rmSync(root, { recursive: true, force: true })
     })
 
-    it('uses the latest session_index thread name as the title', () => {
+    it('uses the latest session_index thread name as the title', async () => {
         const root = mkdtempSync(join(tmpdir(), 'codex-home-'))
         process.env.CODEX_HOME = root
         const sessionsDir = join(root, 'sessions', '2026', '07', '19')
@@ -132,11 +132,11 @@ describe('listLocalCodexSessionSummaries', () => {
             JSON.stringify({ id: 'indexed-session-id', thread_name: 'latest title', updated_at: '2026-07-19T02:00:00Z' })
         ].join('\n'))
 
-        expect(listLocalCodexSessionSummaries()[0]?.title).toBe('latest title')
+        expect((await listLocalCodexSessionSummaries())[0]?.title).toBe('latest title')
         rmSync(root, { recursive: true, force: true })
     })
 
-    it('skips subagent transcripts', () => {
+    it('skips subagent transcripts', async () => {
         const root = mkdtempSync(join(tmpdir(), 'codex-home-'))
         process.env.CODEX_HOME = root
         const sessionsDir = join(root, 'sessions', '2026', '06', '27')
@@ -154,12 +154,41 @@ describe('listLocalCodexSessionSummaries', () => {
             JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'hidden' }] } })
         ].join('\n'))
 
-        expect(listLocalCodexSessionSummaries()).toHaveLength(0)
+        expect(await listLocalCodexSessionSummaries()).toHaveLength(0)
 
         rmSync(root, { recursive: true, force: true })
     })
 
-    it('loads messages only for requested session ids', () => {
+    it('reads a long rollout from its ends, and stops at the limit', async () => {
+        // Listing used to read every rollout whole: 1.7 GB on one machine, long
+        // enough for its runner to miss heartbeats and be dropped by the hub.
+        const root = mkdtempSync(join(tmpdir(), 'codex-home-'))
+        process.env.CODEX_HOME = root
+        const sessionsDir = join(root, 'sessions', '2026', '06', '27')
+        mkdirSync(sessionsDir, { recursive: true })
+        const prompt = (text: string) => JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] } })
+        const filler = JSON.stringify({ type: 'response_item', payload: { type: 'function_call_output', output: 'z'.repeat(10_000) } })
+        writeFileSync(join(sessionsDir, 'rollout-long.jsonl'), [
+            JSON.stringify({ type: 'session_meta', payload: { id: 'long-session-id', cwd: '/tmp/long' } }),
+            prompt('first prompt'),
+            ...Array.from({ length: 100 }, () => filler),
+            prompt('latest prompt'),
+            JSON.stringify({ type: 'response_item', payload: { type: 'function_call', name: 'change_title', arguments: JSON.stringify({ title: 'Latest title' }) } })
+        ].join('\n'))
+        writeFileSync(join(sessionsDir, 'rollout-old.jsonl'), [
+            JSON.stringify({ type: 'session_meta', payload: { id: 'old-session-id', cwd: '/tmp/old' } }),
+            prompt('old')
+        ].join('\n'))
+        utimesSync(join(sessionsDir, 'rollout-old.jsonl'), new Date('2026-01-01'), new Date('2026-01-01'))
+
+        const sessions = await listLocalCodexSessionSummaries({ limit: 1 })
+
+        expect(sessions).toHaveLength(1)
+        expect(sessions[0]).toMatchObject({ id: 'long-session-id', title: 'Latest title', lastUserMessage: 'latest prompt', cwd: '/tmp/long' })
+        rmSync(root, { recursive: true, force: true })
+    })
+
+    it('loads messages only for requested session ids', async () => {
         const root = mkdtempSync(join(tmpdir(), 'codex-home-'))
         process.env.CODEX_HOME = root
         const sessionsDir = join(root, 'sessions', '2026', '06', '27')
@@ -174,7 +203,7 @@ describe('listLocalCodexSessionSummaries', () => {
             JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'other' }] } })
         ].join('\n'))
 
-        const sessions = listLocalCodexSessionsWithMessagesByIds(new Set(['wanted-session-id']))
+        const sessions = await listLocalCodexSessionsWithMessagesByIds(new Set(['wanted-session-id']))
 
         expect(sessions.map((session) => session.id)).toEqual(['wanted-session-id'])
         expect(sessions[0]?.messages).toHaveLength(1)

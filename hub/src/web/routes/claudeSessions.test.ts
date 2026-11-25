@@ -385,6 +385,57 @@ describe('Claude session adoption', () => {
         expect((await response.json() as { error: string }).error).toContain('restarting the runner')
     })
 
+    it('pulls a long transcript a page at a time, and says how far a failed one got', async () => {
+        // One reply per transcript used to carry the whole history; a 92 MB
+        // transcript made a 69 MB reply, past the hub's socket buffer, and the
+        // machine was dropped with the import still waiting on it.
+        const { store } = setup()
+        const rows = [1, 2, 3].map((n) => userRow('native-paged', `u${n}`, `prompt ${n}`, SETTLED + n))
+        let failSecondPage = false
+        const cursors: unknown[] = []
+        const engine = {
+            getOnlineMachinesByNamespace: () => [machine('box-1')],
+            recordSessionActivity: () => {},
+            handleRealtimeEvent: () => {},
+            listClaudeSessionsForMachine: async (_machineId: string, _cwd: string | null, _ids: string[], cursor?: { byteOffset: number }) => {
+                cursors.push(cursor)
+                if (!cursor) {
+                    return { success: true, sessions: [{ ...transcript('native-paged', rows.slice(0, 1)), lastUserMessage: null, nextCursor: { byteOffset: 100, eventIndex: 1 } }] }
+                }
+                if (failSecondPage) throw new Error('operation has timed out')
+                return { success: true, sessions: [{ ...transcript('native-paged', rows.slice(1)) }] }
+            }
+        } as unknown as SyncEngine
+        const app = new Hono<WebAppEnv>()
+        app.use('*', async (c, next) => {
+            c.set('namespace', 'default')
+            await next()
+        })
+        app.route('/api', createClaudeSessionRoutes({ store, getSyncEngine: () => engine }))
+        const post = () => app.request('/api/claude/import-sessions', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ sessionIds: ['native-paged'] })
+        })
+
+        failSecondPage = true
+        const failed = await post()
+        expect(failed.status).toBe(503)
+        expect((await failed.json() as { error: string }).error).toContain('stopped after 1 messages')
+        expect(store.sessions.getSessionsByNamespace('default')).toHaveLength(0)
+
+        failSecondPage = false
+        cursors.length = 0
+        const response = await post()
+        const body = await response.json() as { results: Array<{ hapiSessionId?: string; appended?: number }> }
+        expect(response.status).toBe(200)
+        expect(cursors).toEqual([undefined, { byteOffset: 100, eventIndex: 1 }])
+        expect(body.results[0]?.appended).toBe(3)
+        const stored = store.sessions.getSessionByNamespace(body.results[0]!.hapiSessionId!, 'default')
+        // The machine's summary missed the last prompt; the full history has it.
+        expect((stored?.metadata as { summary?: { text?: string } }).summary?.text).toBe('prompt 3')
+    })
+
     it('validates the import body before asking any machine', async () => {
         const { store } = setup()
         let listed = 0

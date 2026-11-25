@@ -263,27 +263,35 @@ export async function readSessionLog(filePath: string, startByte: number): Promi
 
     const messages: SessionFileScanEntry<RawJSONLines>[] = [];
     for (const l of text.split('\n')) {
-        if (l.trim() === '') {
-            continue;
-        }
-        try {
-            const message = JSON.parse(l);
-            // Silently skip known internal Claude Code state/tracking events.
-            if (message.type && INTERNAL_CLAUDE_EVENT_TYPES.has(message.type)) {
-                continue;
-            }
-            const parsed = RawJSONLinesSchema.safeParse(message);
-            if (!parsed.success) {
-                // Unknown message types are silently skipped.
-                continue;
-            }
-            messages.push({ event: parsed.data });
-        } catch (e) {
-            logger.debug(`[SESSION_SCANNER] Error processing message: ${e}`);
-            continue;
-        }
+        const event = parseSessionLogLine(l);
+        if (event) messages.push({ event });
     }
     return { events: messages, nextCursor };
+}
+
+/**
+ * One transcript line as a conversation row, or null for a line that is not
+ * one: blank, unparseable, Claude Code's own bookkeeping, or a shape we do not
+ * know. Exported so readers that page through a transcript count rows the
+ * same way this scanner does.
+ */
+export function parseSessionLogLine(line: string): RawJSONLines | null {
+    if (line.trim() === '') {
+        return null;
+    }
+    try {
+        const message = JSON.parse(line);
+        // Silently skip known internal Claude Code state/tracking events.
+        if (message.type && INTERNAL_CLAUDE_EVENT_TYPES.has(message.type)) {
+            return null;
+        }
+        const parsed = RawJSONLinesSchema.safeParse(message);
+        // Unknown message types are silently skipped.
+        return parsed.success ? parsed.data : null;
+    } catch (e) {
+        logger.debug(`[SESSION_SCANNER] Error processing message: ${e}`);
+        return null;
+    }
 }
 
 function sessionIdFromPath(filePath: string): string | null {

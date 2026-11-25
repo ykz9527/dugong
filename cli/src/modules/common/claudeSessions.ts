@@ -1,17 +1,21 @@
 import { readFileSync, readdirSync, readlinkSync, statSync } from 'node:fs'
+import { open } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { homedir } from 'node:os'
 import type {
     ClaudeImportedMessage,
     ClaudeLocalSessionSummary,
-    ClaudeLocalSessionWithMessages
+    ClaudeLocalSessionWithMessages,
+    ClaudeTranscriptCursor
 } from '@hapi/protocol/apiTypes'
 import { isClaudeChatVisibleMessage } from '@hapi/protocol/messages'
+import { truncateOversizedMessageContent } from '@hapi/protocol/messageTruncation'
 import type { RawJSONLines } from '@/claude/types'
 import { encodeProjectDirName, getProjectPath } from '@/claude/utils/path'
-import { readSessionLog } from '@/claude/utils/sessionScanner'
+import { parseSessionLogLine } from '@/claude/utils/sessionScanner'
 import { extractRawUserTextContent, isExternalUserMessage } from '@/claude/utils/externalUserMessage'
 import { detectWorktreeOrigin } from './worktreeOrigin'
+import { readTranscriptEnds } from './transcriptEnds'
 
 /**
  * Discovery for Claude Code sessions that were started with the bare `claude`
@@ -19,7 +23,7 @@ import { detectWorktreeOrigin } from './worktreeOrigin'
  *
  * The Codex and Pi equivalents each carry a few hundred lines of transcript
  * translation, because their on-disk formats are nothing like a HAPI message.
- * Claude needs none of that: `readSessionLog` is the same reader the live
+ * Claude needs none of that: `parseSessionLogLine` is the same filter the live
  * scanner uses, and the rows it returns are exactly what the CLI forwards over
  * the socket. So this file only has to *find* sessions and label them — the
  * conversion is two shapes copied from `sendClaudeSessionMessage`.
@@ -29,11 +33,12 @@ import { detectWorktreeOrigin } from './worktreeOrigin'
  * How many sessions an unscoped listing returns.
  *
  * Sorted newest-first, so this is also how much gets read: the scan stops as
- * soon as it has enough. A picker nobody scrolls past the first screen of does
- * not earn the seconds that reading every transcript on a long-lived machine
- * costs, and anything older is reachable by narrowing to its directory.
+ * soon as it has enough. Each one costs two small reads at the ends of its
+ * transcript (see `summariseClaudeLocalSession`), so a hundred come back in
+ * a few hundred milliseconds even on a machine with gigabytes of history —
+ * enough for the picker's filter box to find last week's session.
  */
-const DEFAULT_CLAUDE_SESSION_SCAN_LIMIT = 40
+const DEFAULT_CLAUDE_SESSION_SCAN_LIMIT = 100
 
 /**
  * Sessions a running `claude` is provably working on.
@@ -92,12 +97,8 @@ function transcriptsHeldOpen(): Set<string> | null {
 type ClaudeSessionFileCandidate = {
     file: string
     modifiedAt: number
+    size: number
     discoveryIndex: number
-}
-
-type ParsedClaudeSession = {
-    summary: ClaudeLocalSessionSummary
-    messages: ClaudeImportedMessage[]
 }
 
 function truncateText(value: string, maxLength: number): string {
@@ -124,13 +125,6 @@ function jsonlFilesIn(directory: string): string[] {
 }
 
 /**
- * `cwd` narrows to a single project rather than filtering afterwards: Claude
- * derives its project directory name from the working directory itself
- * (`getProjectPath`), so asking about one directory never has to read another
- * one's transcripts. On a machine with a long history that is the difference
- * between opening one file and opening every file.
- */
-/**
  * Whether a project directory could hold sessions under one of `roots`.
  *
  * Claude's directory name is the working directory with its punctuation
@@ -144,6 +138,12 @@ function projectDirWithinRoots(dirName: string, encodedRoots: readonly string[])
     return encodedRoots.some((root) => dirName === root || dirName.startsWith(`${root}-`))
 }
 
+/**
+ * `cwd` narrows to a single project rather than filtering afterwards: Claude
+ * derives its project directory name from the working directory itself
+ * (`getProjectPath`), so asking about one directory never has to read another
+ * one's transcripts.
+ */
 function collectSortedClaudeSessionFiles(
     cwd?: string | null,
     roots?: readonly string[] | null
@@ -169,7 +169,8 @@ function collectSortedClaudeSessionFiles(
 
     return files.flatMap((file, discoveryIndex) => {
         try {
-            return [{ file, modifiedAt: statSync(file).mtimeMs, discoveryIndex }]
+            const stats = statSync(file)
+            return [{ file, modifiedAt: stats.mtimeMs, size: stats.size, discoveryIndex }]
         } catch {
             return []
         }
@@ -195,7 +196,7 @@ function toImportedMessage(
     sessionId: string,
     index: number,
     fallbackCreatedAt: number
-): ClaudeImportedMessage | null {
+): ClaudeImportedMessage {
     const uuid = 'uuid' in row && typeof row.uuid === 'string' ? row.uuid : null
     const localId = `claude:${sessionId}:${uuid ?? `row-${index}`}`
     const createdAt = rowTimestamp(row, fallbackCreatedAt)
@@ -230,165 +231,138 @@ function toImportedMessage(
  */
 const INTERNAL_ROW_TYPES = new Set(['file-history-snapshot', 'change', 'queue-operation'])
 
+type SummaryFold = {
+    sessionId: string | null
+    cwd: string | null
+    nativeTitle: string | null
+    summaryTitle: string | null
+    firstUserMessage: string | null
+    lastUserMessage: string | null
+    messageCount: number
+}
+
 /**
- * A listing-only pass over one transcript.
+ * Fold transcript lines, in file order, into what a summary shows.
  *
- * Same filters as the import path, minus the schema validation: a summary
- * needs a title, a directory, the last thing said and a count, and running
- * every row through `RawJSONLinesSchema` to get them costs more than reading
- * the file did. Measured over ~390MB of local transcripts: 1.6s to read,
- * 3.4s to JSON.parse, and another 3.5s to validate.
- *
- * The import path keeps the strict parse — those rows are persisted and
- * replayed to clients, so they have to be the shape everything downstream
- * expects. Here nothing survives past the summary.
+ * No schema validation: a summary needs a title, a directory and the last
+ * thing said, and validating every row to get them used to cost more than
+ * reading the file. The import path keeps the strict parse — those rows are
+ * persisted and replayed to clients.
  */
-function summariseClaudeLocalSession(
-    filePath: string,
-    modifiedAt: number,
-    heldOpen: Set<string> | null
-): ClaudeLocalSessionSummary | null {
-    let content: string
-    try {
-        content = readFileSync(filePath, 'utf-8')
-    } catch {
-        return null
-    }
-
-    let sessionId: string | null = null
-    let cwd: string | null = null
-    let nativeTitle: string | null = null
-    let summaryTitle: string | null = null
-    let firstUserMessage: string | null = null
-    let lastUserMessage: string | null = null
-    let messageCount = 0
-
-    for (const line of content.split('\n')) {
-        if (!line.trim()) continue
+function foldSummaryLines(fold: SummaryFold, lines: readonly string[]): void {
+    for (const line of lines) {
         let row: Record<string, unknown>
         try {
             row = JSON.parse(line) as Record<string, unknown>
         } catch {
             continue
         }
-        const type = row.type
+        const type = row?.type
         if (typeof type !== 'string' || INTERNAL_ROW_TYPES.has(type)) continue
 
-        sessionId ??= typeof row.sessionId === 'string' ? row.sessionId : null
-        cwd ??= typeof row.cwd === 'string' ? row.cwd : null
+        fold.sessionId ??= typeof row.sessionId === 'string' ? row.sessionId : null
+        fold.cwd ??= typeof row.cwd === 'string' ? row.cwd : null
 
         if (type === 'ai-title') {
-            if (typeof row.aiTitle === 'string') nativeTitle = row.aiTitle
+            // Claude re-titles as the conversation moves; the latest wins.
+            if (typeof row.aiTitle === 'string') fold.nativeTitle = row.aiTitle
             continue
         }
         if (type === 'summary') {
-            if (typeof row.summary === 'string') summaryTitle ??= row.summary
+            if (typeof row.summary === 'string') fold.summaryTitle ??= row.summary
             continue
         }
         if (row.isMeta === true || row.isCompactSummary === true) continue
         if (!isClaudeChatVisibleMessage(row as { type: unknown; subtype?: unknown })) continue
 
-        messageCount += 1
+        fold.messageCount += 1
         if (isExternalUserMessage(row as unknown as RawJSONLines)) {
             const text = extractRawUserTextContent((row.message as { content?: unknown })?.content)?.trim()
             if (text) {
-                firstUserMessage ??= text
-                lastUserMessage = text
+                fold.firstUserMessage ??= text
+                fold.lastUserMessage = text
             }
         }
-    }
-
-    const resolvedId = sessionId ?? sessionIdFromFile(filePath)
-    if (!resolvedId) return null
-
-    return {
-        id: resolvedId,
-        title: nativeTitle
-            ?? summaryTitle
-            ?? (firstUserMessage ? truncateText(firstUserMessage, 80) : null)
-            ?? (cwd ? basename(cwd) || cwd : null)
-            ?? resolvedId.slice(0, 8),
-        lastUserMessage: lastUserMessage ? truncateText(lastUserMessage, 140) : null,
-        cwd,
-        file: filePath,
-        modifiedAt,
-        messageCount,
-        ...(heldOpen ? { live: heldOpen.has(resolvedId) } : {})
     }
 }
 
-async function parseClaudeLocalSession(
-    filePath: string,
-    knownModifiedAt?: number
-): Promise<ParsedClaudeSession | null> {
-    let modifiedAt: number
-    try {
-        modifiedAt = knownModifiedAt ?? statSync(filePath).mtimeMs
-    } catch {
-        return null
+type CachedSummary = {
+    size: number
+    modifiedAt: number
+    summary: ClaudeLocalSessionSummary | null
+}
+
+/**
+ * Summaries by transcript path, valid while size and mtime are unchanged.
+ *
+ * The runner lives for days and most transcripts stop changing once their
+ * session ends, so a repeat listing reads only the files written since.
+ */
+const summaryCache = new Map<string, CachedSummary>()
+const SUMMARY_CACHE_LIMIT = 5000
+
+/**
+ * A listing-only look at one transcript: its head and tail, never the middle.
+ *
+ * Everything on a picker row lives at the ends: the session id and directory
+ * in the first rows, Claude's latest `ai-title` and the last prompt near the
+ * end (Claude rewrites the title throughout a session, so the newest one is
+ * always close to the tail). The one thing the ends cannot give is an exact
+ * message count, so a long transcript reports its size instead.
+ */
+async function summariseClaudeLocalSession(
+    candidate: Pick<ClaudeSessionFileCandidate, 'file' | 'modifiedAt' | 'size'>
+): Promise<ClaudeLocalSessionSummary | null> {
+    const cached = summaryCache.get(candidate.file)
+    if (cached && cached.size === candidate.size && cached.modifiedAt === candidate.modifiedAt) {
+        return cached.summary
     }
 
-    const { events } = await readSessionLog(filePath, 0)
-    if (events.length === 0) return null
+    const ends = await readTranscriptEnds(candidate.file)
+    if (!ends) return null
 
-    let sessionId: string | null = null
-    let cwd: string | null = null
-    let nativeTitle: string | null = null
-    let summaryTitle: string | null = null
-    let firstUserMessage: string | null = null
-    let lastUserMessage: string | null = null
-    const messages: ClaudeImportedMessage[] = []
-
-    for (const [index, { event }] of events.entries()) {
-        sessionId ??= event.sessionId ?? null
-        cwd ??= event.cwd ?? null
-
-        // Claude Code's own title events. Metadata, never chat rows — the live
-        // launcher routes these to the session title for the same reason.
-        if (event.type === 'ai-title') {
-            nativeTitle = event.aiTitle
-            continue
-        }
-        if (event.type === 'summary') {
-            summaryTitle ??= event.summary
-            continue
-        }
-        if (event.isMeta || event.isCompactSummary) continue
-        if (!isClaudeChatVisibleMessage(event)) continue
-
-        const message = toImportedMessage(event, sessionId ?? sessionIdFromFile(filePath), index, modifiedAt)
-        if (!message) continue
-        if (message.content.role === 'user') {
-            const text = message.content.content.text
-            if (text) {
-                firstUserMessage ??= text
-                lastUserMessage = text
-            }
-        }
-        messages.push(message)
+    const fold: SummaryFold = {
+        sessionId: null,
+        cwd: null,
+        nativeTitle: null,
+        summaryTitle: null,
+        firstUserMessage: null,
+        lastUserMessage: null,
+        messageCount: 0
     }
+    foldSummaryLines(fold, ends.head)
+    // "Last prompt" means last in the file. A long agent turn can push it out
+    // of the tail window, and the head's last prompt would then pass for it —
+    // usually the very first thing said. Better none than a wrong one.
+    if (!ends.whole) fold.lastUserMessage = null
+    foldSummaryLines(fold, ends.tail)
 
-    const resolvedId = sessionId ?? sessionIdFromFile(filePath)
-    if (!resolvedId) return null
-
-    const title = nativeTitle
-        ?? summaryTitle
-        ?? (firstUserMessage ? truncateText(firstUserMessage, 80) : null)
-        ?? (cwd ? basename(cwd) || cwd : null)
-        ?? resolvedId.slice(0, 8)
-
-    return {
-        summary: {
+    const resolvedId = fold.sessionId ?? sessionIdFromFile(candidate.file)
+    // A whole transcript with nothing visible in it is a stub Claude left
+    // behind (a session that never got a turn); adopting one gives an empty
+    // card. A partial read proves nothing either way, so it is kept.
+    const summary: ClaudeLocalSessionSummary | null = !resolvedId || (ends.whole && fold.messageCount === 0)
+        ? null
+        : {
             id: resolvedId,
-            title,
-            lastUserMessage: lastUserMessage ? truncateText(lastUserMessage, 140) : null,
-            cwd,
-            file: filePath,
-            modifiedAt,
-            messageCount: messages.length
-        },
-        messages
-    }
+            title: fold.nativeTitle
+                ?? fold.summaryTitle
+                ?? (fold.firstUserMessage ? truncateText(fold.firstUserMessage, 80) : null)
+                ?? (fold.cwd ? basename(fold.cwd) || fold.cwd : null)
+                ?? resolvedId.slice(0, 8),
+            lastUserMessage: fold.lastUserMessage ? truncateText(fold.lastUserMessage, 140) : null,
+            cwd: fold.cwd,
+            file: candidate.file,
+            modifiedAt: candidate.modifiedAt,
+            size: ends.size,
+            ...(ends.whole ? { messageCount: fold.messageCount } : {})
+        }
+
+    if (summaryCache.size >= SUMMARY_CACHE_LIMIT) summaryCache.clear()
+    // Keyed on what was statted before the read: a file that grew in between
+    // is simply re-read next time.
+    summaryCache.set(candidate.file, { size: candidate.size, modifiedAt: candidate.modifiedAt, summary })
+    return summary
 }
 
 export async function listLocalClaudeSessionSummaries(
@@ -413,42 +387,150 @@ export async function listLocalClaudeSessionSummaries(
     const summaries: ClaudeLocalSessionSummary[] = []
     const heldOpen = transcriptsHeldOpen()
     for (const candidate of collectSortedClaudeSessionFiles(cwd, roots)) {
-        const summary = summariseClaudeLocalSession(candidate.file, candidate.modifiedAt, heldOpen)
+        const summary = await summariseClaudeLocalSession(candidate)
         if (!summary || seenIds.has(summary.id)) continue
-        // A transcript with nothing visible in it is a stub Claude left behind
-        // (a session that never got a turn); adopting one gives an empty card.
-        if (summary.messageCount === 0) continue
         seenIds.add(summary.id)
         if (accept && !(await accept(summary))) continue
-        summaries.push(summary)
+        summaries.push(heldOpen ? { ...summary, live: heldOpen.has(summary.id) } : summary)
         if (summaries.length >= limit) break
     }
     return summaries
 }
 
+/**
+ * How much of a transcript one import page carries, measured as the JSON the
+ * hub will receive. Far under the hub's socket buffer (48 MB), which a single
+ * long transcript used to blow through: the hub dropped the machine's
+ * connection mid-reply and the import died on a 30 s timeout.
+ */
+const IMPORT_PAGE_BUDGET_CHARS = 8 * 1024 * 1024
+/** File bytes read per step while filling a page. */
+const IMPORT_READ_WINDOW_BYTES = 16 * 1024 * 1024
+
+type TranscriptPage = {
+    messages: ClaudeImportedMessage[]
+    nextCursor?: ClaudeTranscriptCursor
+}
+
+/**
+ * One page of a transcript's conversation, starting at `cursor`.
+ *
+ * Rows are numbered exactly as `readSessionLog` numbers them, so the fallback
+ * id of a row without a uuid does not depend on where a page broke. Agent
+ * content is truncated here, as the hub would on ingest, so the
+ * page budget counts the bytes that will actually be stored.
+ */
+async function readClaudeTranscriptPage(
+    filePath: string,
+    sessionId: string,
+    modifiedAt: number,
+    cursor: ClaudeTranscriptCursor
+): Promise<TranscriptPage | { error: string }> {
+    const handle = await open(filePath, 'r')
+    try {
+        const { size } = await handle.stat()
+        if (cursor.byteOffset > size) {
+            return { error: 'The transcript shrank while it was being imported' }
+        }
+
+        const messages: ClaudeImportedMessage[] = []
+        let offset = cursor.byteOffset
+        let eventIndex = cursor.eventIndex
+        let pageChars = 0
+        let windowBytes = IMPORT_READ_WINDOW_BYTES
+
+        while (offset < size && pageChars < IMPORT_PAGE_BUDGET_CHARS) {
+            const length = Math.min(windowBytes, size - offset)
+            const buffer = Buffer.allocUnsafe(length)
+            let filled = 0
+            while (filled < length) {
+                const { bytesRead } = await handle.read(buffer, filled, length - filled, offset + filled)
+                if (bytesRead === 0) break
+                filled += bytesRead
+            }
+            if (filled === 0) {
+                return { error: 'The transcript changed while it was being imported' }
+            }
+            const chunk = buffer.subarray(0, filled)
+            const atEnd = offset + filled >= size
+            let usable = chunk.lastIndexOf(0x0a) + 1
+            if (usable === 0 && !atEnd) {
+                // One line longer than the window: widen and read again.
+                windowBytes *= 2
+                continue
+            }
+            // A last line with no newline is read if it is whole JSON (the
+            // scanner does the same); a torn write simply fails to parse.
+            if (atEnd) usable = chunk.length
+
+            let position = 0
+            while (position < usable) {
+                const newline = chunk.indexOf(0x0a, position)
+                const lineEnd = newline === -1 || newline >= usable ? usable : newline
+                const event = parseSessionLogLine(chunk.toString('utf-8', position, lineEnd))
+                position = lineEnd + 1
+                if (!event) continue
+                const index = eventIndex
+                eventIndex += 1
+
+                // Claude Code's own title events are metadata, never chat rows —
+                // the live launcher routes them to the session title too.
+                if (event.type === 'ai-title' || event.type === 'summary') continue
+                if (event.isMeta || event.isCompactSummary) continue
+                if (!isClaudeChatVisibleMessage(event)) continue
+
+                const message = toImportedMessage(event, sessionId, index, modifiedAt)
+                const stored = { ...message, content: truncateOversizedMessageContent(message.content) as ClaudeImportedMessage['content'] }
+                messages.push(stored)
+                pageChars += JSON.stringify(stored).length
+                if (pageChars >= IMPORT_PAGE_BUDGET_CHARS) break
+            }
+            offset += Math.min(position, usable)
+        }
+
+        return offset < size
+            ? { messages, nextCursor: { byteOffset: offset, eventIndex } }
+            : { messages }
+    } finally {
+        await handle.close().catch(() => undefined)
+    }
+}
+
+/**
+ * The transcripts `ids` name, each with one page of its conversation.
+ *
+ * Without `cursor` this is the first page and carries everything the hub
+ * needs to decide on the import (title, liveness, worktree); with it, `ids`
+ * must name exactly one session and only that session's next page is read.
+ */
 export async function listLocalClaudeSessionsWithMessagesByIds(
     ids: Set<string>,
-    cwd?: string | null
+    cwd?: string | null,
+    cursor?: ClaudeTranscriptCursor
 ): Promise<ClaudeLocalSessionWithMessages[]> {
     if (ids.size === 0) return []
+    if (cursor && ids.size !== 1) throw new Error('A transcript cursor applies to exactly one session')
     const unresolved = new Set(ids)
     const sessions: ClaudeLocalSessionWithMessages[] = []
-    const heldOpen = transcriptsHeldOpen()
+    const heldOpen = cursor ? null : transcriptsHeldOpen()
     for (const candidate of collectSortedClaudeSessionFiles(cwd)) {
         // The filename is the session id in every transcript Claude writes, so
-        // this skips parsing whole files nobody asked for.
+        // this skips files nobody asked for without opening them.
         if (!unresolved.has(sessionIdFromFile(candidate.file))) continue
-        const parsed = await parseClaudeLocalSession(candidate.file, candidate.modifiedAt)
-        if (!parsed || !unresolved.has(parsed.summary.id)) continue
-        unresolved.delete(parsed.summary.id)
-        // Only on the import path: the hub needs it to decide who owns the
+        const summary = await summariseClaudeLocalSession(candidate)
+        if (!summary || !unresolved.has(summary.id)) continue
+        unresolved.delete(summary.id)
+        const page = await readClaudeTranscriptPage(candidate.file, summary.id, candidate.modifiedAt, cursor ?? { byteOffset: 0, eventIndex: 0 })
+        if ('error' in page) throw new Error(page.error)
+        // Only on the first page: the hub needs it to decide who owns the
         // adopted session, and nothing in the listing does.
-        const worktree = parsed.summary.cwd ? detectWorktreeOrigin(parsed.summary.cwd) : null
+        const worktree = !cursor && summary.cwd ? detectWorktreeOrigin(summary.cwd) : null
         sessions.push({
-            ...parsed.summary,
-            ...(heldOpen ? { live: heldOpen.has(parsed.summary.id) } : {}),
+            ...summary,
+            ...(heldOpen ? { live: heldOpen.has(summary.id) } : {}),
             ...(worktree ? { worktree } : {}),
-            messages: parsed.messages
+            messages: page.messages,
+            ...(page.nextCursor ? { nextCursor: page.nextCursor } : {})
         })
         if (unresolved.size === 0) break
     }

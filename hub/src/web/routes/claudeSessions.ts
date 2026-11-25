@@ -3,7 +3,7 @@ import { isDeepStrictEqual } from 'node:util'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { isPermissionModeAllowedForFlavor } from '@hapi/protocol'
-import type { ClaudeLocalSessionSummary, ClaudeLocalSessionWithMessages } from '@hapi/protocol/apiTypes'
+import type { ClaudeLocalSessionSummary, ClaudeLocalSessionWithMessages, ClaudeTranscriptCursor } from '@hapi/protocol/apiTypes'
 import type { Metadata, PermissionMode } from '@hapi/protocol/types'
 import type { Store, StoredMessage, StoredSession } from '../../store'
 import { ImportedMessageConflictError } from '../../store/messages'
@@ -61,8 +61,96 @@ const LIVE_TRANSCRIPT_WINDOW_MS = 60_000
 function describeListFailure(cause: unknown): string {
     const message = cause instanceof Error ? cause.message : String(cause)
     return /timed out|timeout/i.test(message)
-        ? 'The machine did not answer in time. Its runner may predate this feature — restarting the runner picks up a newer build.'
+        ? 'The machine did not answer in time. Its runner may have lost its connection to the hub, or predate this feature — restarting the runner picks up a newer build.'
         : message
+}
+
+/**
+ * Most pages one transcript may take. A page is about 8 MB of stored JSON, so
+ * this is well past any transcript seen in practice; it exists so a machine
+ * that keeps answering "more" cannot hold the request open forever.
+ */
+const MAX_TRANSCRIPT_PAGES = 200
+
+type TranscriptFetch =
+    | { transcript: ClaudeLocalSessionWithMessages }
+    | { error: { code: string; message: string } }
+    | null
+
+/**
+ * One transcript, pulled from the machine a page at a time.
+ *
+ * The whole transcript in one reply was the old shape, and a long session
+ * broke it: 92 MB of JSONL came back as a 69 MB reply, past the hub's 48 MB
+ * socket buffer, so the hub dropped the machine mid-reply and the import died
+ * on a 30 s timeout with nothing to say why.
+ *
+ * A runner that predates paging ignores the cursor and returns everything in
+ * one go with no `nextCursor`, which this reads as a single page.
+ */
+async function fetchClaudeTranscript(
+    engine: SyncEngine,
+    machineId: string,
+    cwd: string | null,
+    sessionId: string
+): Promise<TranscriptFetch> {
+    const readPage = async (cursor?: ClaudeTranscriptCursor) => {
+        const result = await engine.listClaudeSessionsForMachine(machineId, cwd, [sessionId], cursor)
+        if (!result.success) throw new Error(result.error)
+        return result.sessions.find((session): session is ClaudeLocalSessionWithMessages =>
+            'messages' in session && session.id === sessionId) ?? null
+    }
+
+    let first: ClaudeLocalSessionWithMessages | null
+    try {
+        first = await readPage()
+    } catch (cause) {
+        return { error: { code: 'machine_error', message: describeListFailure(cause) } }
+    }
+    if (!first) return null
+    // A live transcript is refused anyway; no point reading the rest of it.
+    if (isLiveTranscript(first)) return { transcript: first }
+
+    const { nextCursor, ...head } = first
+    const messages = [...head.messages]
+    let cursor = nextCursor
+    for (let pages = 1; cursor; pages += 1) {
+        const failed = (message: string) => ({
+            error: {
+                code: 'machine_error',
+                message: `Reading the transcript stopped after ${messages.length} messages: ${message}`
+            }
+        })
+        if (pages >= MAX_TRANSCRIPT_PAGES) return failed('it is longer than an import can take')
+        let page: ClaudeLocalSessionWithMessages | null
+        try {
+            page = await readPage(cursor)
+        } catch (cause) {
+            return failed(describeListFailure(cause))
+        }
+        if (!page) return failed('the transcript is gone from the machine')
+        if (page.nextCursor && page.nextCursor.byteOffset <= cursor.byteOffset) {
+            return failed('the machine stopped making progress')
+        }
+        for (const message of page.messages) messages.push(message)
+        cursor = page.nextCursor
+    }
+    return { transcript: { ...head, messages, lastUserMessage: lastUserText(messages) ?? head.lastUserMessage } }
+}
+
+/**
+ * The last prompt, from the full history. The machine's summary reads only
+ * the ends of a long transcript and can miss it; with every message in hand
+ * there is no need to guess.
+ */
+function lastUserText(messages: ClaudeLocalSessionWithMessages['messages']): string | null {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+        const content = messages[index]!.content
+        if (content.role !== 'user') continue
+        const text = content.content.text.trim()
+        if (text) return text.length > 140 ? `${text.slice(0, 139)}…` : text
+    }
+    return null
 }
 
 export type ClaudeSessionListItem = ClaudeLocalSessionSummary & {
@@ -433,37 +521,36 @@ export function createClaudeSessionRoutes(options: {
         const engine = options.getSyncEngine()
         const machine = resolveClaudeMachine(engine, namespace, body.machineId || null)
         if (!engine || !machine) return c.json({ success: false, error: 'No online machine available for Claude session adoption', results: [] }, 503)
-        let remote: Awaited<ReturnType<SyncEngine['listClaudeSessionsForMachine']>>
-        try {
-            remote = await engine.listClaudeSessionsForMachine(
-                machine.id,
-                body.cwd || null,
-                uniqueSessionIds
-            )
-        } catch (cause) {
-            return c.json({ success: false, error: describeListFailure(cause), results: [], machineId: machine.id }, 503)
-        }
-        if (!remote.success) return c.json({ success: false, error: remote.error, results: [], machineId: machine.id }, 503)
-        const byId = new Map(remote.sessions
-            .filter((session): session is ClaudeLocalSessionWithMessages => 'messages' in session)
-            .map((session) => [session.id, session]))
-        const importedByClaudeId = importedClaudeSessionsById(options.store, namespace, machine.id)
         const results: ClaudeImportResult[] = []
         for (const sessionId of uniqueSessionIds) {
-            const transcript = byId.get(sessionId)
-            if (!transcript) {
+            const fetched = await fetchClaudeTranscript(engine, machine.id, body.cwd || null, sessionId)
+            if (!fetched) {
                 results.push({ claudeSessionId: sessionId, error: { code: 'not_found', message: 'Claude session transcript not found' } })
                 continue
             }
+            if ('error' in fetched) {
+                results.push({ claudeSessionId: sessionId, error: fetched.error })
+                continue
+            }
+            // Read after the fetch, which can take seconds: an import of the
+            // same transcript that finished meanwhile must be seen.
+            const existingSession = importedClaudeSessionsById(options.store, namespace, machine.id).get(sessionId) ?? null
             results.push(await importWithLock(`${namespace}:${machine.id}:${sessionId}`, () => importClaudeSession({
                 store: options.store,
                 engine,
                 namespace,
                 machine,
-                transcript,
-                existingSession: importedByClaudeId.get(sessionId) ?? null,
+                transcript: fetched.transcript,
+                existingSession,
                 permissionMode: requestedPermissionMode
             })))
+        }
+        // Every transcript failed on the machine side: answer as the machine
+        // failure it is, so the client shows the reason rather than a generic
+        // import error.
+        const machineFailure = results.length > 0 && results.every((result) => result.error?.code === 'machine_error')
+        if (machineFailure) {
+            return c.json({ success: false, error: results[0]!.error!.message, results, machineId: machine.id }, 503)
         }
         return c.json({ success: results.every((result) => !result.error), results, machineId: machine.id })
     })

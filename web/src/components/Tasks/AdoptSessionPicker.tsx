@@ -4,6 +4,7 @@ import { getFlavorLabel } from '@hapi/protocol'
 import { readableError, type ApiClient } from '@/api/client'
 import { useTranslation } from '@/lib/use-translation'
 import { SelectControl } from '@/components/ui/select-control'
+import { formatFileSize } from '@/lib/file-metadata'
 
 const ALL_DIRECTORIES = '__all__'
 
@@ -18,7 +19,10 @@ export type AdoptableSession = {
     cwd?: string | null
     lastUserMessage?: string | null
     modifiedAt: number
+    /** Absent when the machine read only the ends of a long transcript. */
     messageCount?: number
+    /** Claude only: transcript bytes, shown when there is no count. */
+    size?: number
     /** Claude only: the transcript is still being written. */
     live?: boolean
     /** Claude only: the session already has a HAPI row. */
@@ -38,6 +42,13 @@ async function listAdoptableSessions(api: ApiClient, flavor: AdoptableFlavor, ma
     const response = await api.getClaudeSessions(null, machineId)
     if (!response.success) throw new Error(response.error)
     return response.sessions
+}
+
+/** " · 12 messages", or " · 104 MB" for a transcript too long to count. */
+function sessionExtent(session: AdoptableSession, t: ReturnType<typeof useTranslation>['t']): string | null {
+    if (session.messageCount !== undefined) return ` · ${t('board.adopt.messages', { n: session.messageCount })}`
+    const size = formatFileSize(session.size)
+    return size ? ` · ${size}` : null
 }
 
 /**
@@ -176,7 +187,7 @@ export function AdoptSessionPicker(props: {
                                         </span>
                                         <span className="mt-0.5 block text-xs text-[var(--app-hint)]">
                                             {new Date(session.modifiedAt).toLocaleString()}
-                                            {session.messageCount !== undefined ? ` · ${t('board.adopt.messages', { n: session.messageCount })}` : null}
+                                            {sessionExtent(session, t)}
                                         </span>
                                     </span>
                                 </label>

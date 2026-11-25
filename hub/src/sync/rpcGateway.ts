@@ -27,6 +27,7 @@ import type {
     ListDirectoryResponse,
     MachineCreateDirectoryResponse,
     ListClaudeSessionsRpcResponse,
+    ClaudeTranscriptCursor,
     ListCodexSessionsRpcResponse,
     ListPiSessionsRpcResponse,
     ArchiveCodexSessionRpcResponse,
@@ -444,8 +445,14 @@ export class RpcGateway {
         ) as RpcListCodexModelsResponse
     }
 
+    /**
+     * A listing reads only the ends of each rollout and answers in about a
+     * second, so it gets the ordinary timeout; an import still converts whole
+     * rollouts and keeps the long one.
+     */
     async listCodexSessionsForMachine(machineId: string, cwd?: string | null, sessionIds?: string[]): Promise<RpcListCodexSessionsResponse> {
-        const result = await this.machineRpc(machineId, RPC_METHODS.ListCodexSessions, { cwd: cwd ?? null, sessionIds }, MODEL_LIST_RPC_TIMEOUT_MS)
+        const timeoutMs = sessionIds?.length ? MODEL_LIST_RPC_TIMEOUT_MS : DEFAULT_RPC_TIMEOUT_MS
+        const result = await this.machineRpc(machineId, RPC_METHODS.ListCodexSessions, { cwd: cwd ?? null, sessionIds }, timeoutMs)
         return ListCodexSessionsRpcResponseSchema.parse(result)
     }
 
@@ -455,13 +462,18 @@ export class RpcGateway {
     }
 
     /**
-     * Scanning transcripts is disk-bound and bounded: whole-machine scans
-     * measure in seconds, a scoped one in tens of milliseconds. The long
-     * model-list timeout would only ever be reached by a runner that is never
-     * going to answer, and every second of it is a spinner.
+     * A listing reads only the ends of each transcript and an import page is
+     * bounded, so either answers in well under a second. The long model-list
+     * timeout would only ever be reached by a runner that is never going to
+     * answer, and every second of it is a spinner.
      */
-    async listClaudeSessionsForMachine(machineId: string, cwd?: string | null, sessionIds?: string[]): Promise<RpcListClaudeSessionsResponse> {
-        const result = await this.machineRpc(machineId, RPC_METHODS.ListClaudeSessions, { cwd: cwd ?? null, sessionIds }, DEFAULT_RPC_TIMEOUT_MS)
+    async listClaudeSessionsForMachine(
+        machineId: string,
+        cwd?: string | null,
+        sessionIds?: string[],
+        cursor?: ClaudeTranscriptCursor
+    ): Promise<RpcListClaudeSessionsResponse> {
+        const result = await this.machineRpc(machineId, RPC_METHODS.ListClaudeSessions, { cwd: cwd ?? null, sessionIds, ...(cursor ? { cursor } : {}) }, DEFAULT_RPC_TIMEOUT_MS)
         return ListClaudeSessionsRpcResponseSchema.parse(result)
     }
 

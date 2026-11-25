@@ -320,7 +320,15 @@ export const ClaudeLocalSessionSummarySchema = z.object({
     cwd: z.string().nullable().optional(),
     file: z.string().min(1),
     modifiedAt: z.number(),
-    messageCount: z.number().int().nonnegative(),
+    /**
+     * Visible messages in the transcript. Only counted when the listing read
+     * the whole file: a summary reads the head and tail of a long transcript,
+     * and counting would mean reading the rest — hundreds of megabytes on a
+     * machine with a long history.
+     */
+    messageCount: z.number().int().nonnegative().optional(),
+    /** Transcript size in bytes; what the picker shows when it has no count. */
+    size: z.number().int().nonnegative().optional(),
     /**
      * Whether a `claude` process still holds this transcript open.
      *
@@ -330,6 +338,13 @@ export const ClaudeLocalSessionSummarySchema = z.object({
      * the hub falls back to judging by how recently the file was written.
      */
     live: z.boolean().optional()
+})
+
+/** A resume point inside one transcript: a byte offset at a line boundary,
+ *  plus how many rows came before it, which keeps fallback row ids stable. */
+export const ClaudeTranscriptCursorSchema = z.object({
+    byteOffset: z.number().int().nonnegative(),
+    eventIndex: z.number().int().nonnegative()
 })
 
 export const ClaudeLocalSessionWithMessagesSchema = ClaudeLocalSessionSummarySchema.extend({
@@ -343,12 +358,22 @@ export const ClaudeLocalSessionWithMessagesSchema = ClaudeLocalSessionSummarySch
      * and vanishes from every filtered view. The listing shape leaves it out:
      * nothing on screen needs it, and it would be read per row.
      */
-    worktree: WorktreeMetadataSchema.optional()
+    worktree: WorktreeMetadataSchema.optional(),
+    /**
+     * Where the next page of `messages` starts; absent on the last page.
+     *
+     * A long transcript does not fit in one socket frame (the hub drops a
+     * machine whose packet passes its buffer limit, and the reply dies with
+     * the connection), so the hub pulls history a page at a time.
+     */
+    nextCursor: ClaudeTranscriptCursorSchema.optional()
 })
 
 export const ListClaudeSessionsRpcRequestSchema = z.object({
     cwd: z.string().nullable().optional(),
-    sessionIds: z.array(z.string().min(1)).optional()
+    sessionIds: z.array(z.string().min(1)).optional(),
+    /** With exactly one session id: continue that transcript from here. */
+    cursor: ClaudeTranscriptCursorSchema.optional()
 })
 
 export const ListClaudeSessionsRpcResponseSchema = z.union([
@@ -361,6 +386,7 @@ export type ClaudeImportedMessage = z.infer<typeof ClaudeImportedMessageSchema>
 export type ClaudeLocalSessionSummary = z.infer<typeof ClaudeLocalSessionSummarySchema>
 export type ClaudeLocalSessionWithMessages = z.infer<typeof ClaudeLocalSessionWithMessagesSchema>
 export type ListClaudeSessionsRpcRequest = z.infer<typeof ListClaudeSessionsRpcRequestSchema>
+export type ClaudeTranscriptCursor = z.infer<typeof ClaudeTranscriptCursorSchema>
 export type ListClaudeSessionsRpcResponse = z.infer<typeof ListClaudeSessionsRpcResponseSchema>
 
 export const SessionCollaborationModeRequestSchema = z.object({

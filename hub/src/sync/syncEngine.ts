@@ -12,7 +12,7 @@ import {
     cliBinaryUpdatedOnDisk,
     isMachineCapabilitySkewed,
 } from '@hapi/protocol/runnerCapabilities'
-import type { CursorChatStoreStatus, CursorMigrateOutcome, CursorMigrateToAcpRequest, MachineCreateDirectoryResponse, MessageDeliveryMode, UserTurn, MessagesResponse, QueuedStateResponse, RemoveWorktreeRequest, RemoveWorktreeResponse, SlashCommandsResponse } from '@hapi/protocol/apiTypes'
+import type { ClaudeTranscriptCursor, CursorChatStoreStatus, CursorMigrateOutcome, CursorMigrateToAcpRequest, MachineCreateDirectoryResponse, MessageDeliveryMode, UserTurn, MessagesResponse, QueuedStateResponse, RemoveWorktreeRequest, RemoveWorktreeResponse, SlashCommandsResponse } from '@hapi/protocol/apiTypes'
 import type { SteerQueuedMessageResponse } from '@hapi/protocol/schemas'
 import type { AgentFlavor, CodexCollaborationMode, CopilotAgentMode, DecryptedMessage, PermissionMode, Session, SyncEvent } from '@hapi/protocol/types'
 import { unwrapRoleWrappedRecordEnvelope, type BackgroundTaskCounts } from '@hapi/protocol/messages'
@@ -3989,8 +3989,13 @@ export class SyncEngine {
         return await this.rpcGateway.listPiSessionsForMachine(machineId, cwd, sessionIds)
     }
 
-    async listClaudeSessionsForMachine(machineId: string, cwd?: string | null, sessionIds?: string[]): Promise<RpcListClaudeSessionsResponse> {
-        return await this.rpcGateway.listClaudeSessionsForMachine(machineId, cwd, sessionIds)
+    async listClaudeSessionsForMachine(
+        machineId: string,
+        cwd?: string | null,
+        sessionIds?: string[],
+        cursor?: ClaudeTranscriptCursor
+    ): Promise<RpcListClaudeSessionsResponse> {
+        return await this.rpcGateway.listClaudeSessionsForMachine(machineId, cwd, sessionIds, cursor)
     }
 
     async archiveCodexSessionForMachine(machineId: string, sessionId: string): Promise<RpcArchiveCodexSessionResponse> {

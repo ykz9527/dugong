@@ -186,6 +186,62 @@ describe('local Claude sessions', () => {
         expect(scoped.map((session) => session.id).sort()).toEqual(['sess-mine', 'sess-nested'])
     })
 
+    it('summarises a long transcript from its ends', async () => {
+        // The middle of a long transcript holds nothing a picker row shows,
+        // and reading it is what made listing take seconds.
+        const root = useRoot()
+        const filler = 'x'.repeat(10_000)
+        writeTranscript(root, '-tmp-long', 'sess-long', [
+            { type: 'user', uuid: 'u1', sessionId: 'sess-long', cwd: '/tmp/long', timestamp: '2026-09-01T10:00:00Z', message: { role: 'user', content: 'first prompt' } },
+            { type: 'ai-title', sessionId: 'sess-long', aiTitle: 'Early title' },
+            ...Array.from({ length: 100 }, (_, i) => ({
+                type: 'assistant', uuid: `a${i}`, sessionId: 'sess-long', timestamp: '2026-09-01T10:00:01Z',
+                message: { role: 'assistant', content: [{ type: 'text', text: filler }] }
+            })),
+            { type: 'user', uuid: 'u2', sessionId: 'sess-long', timestamp: '2026-09-01T11:00:00Z', message: { role: 'user', content: 'latest prompt' } },
+            { type: 'ai-title', sessionId: 'sess-long', aiTitle: 'Latest title' }
+        ])
+
+        const [summary] = await listLocalClaudeSessionSummaries()
+
+        expect(summary).toMatchObject({ id: 'sess-long', cwd: '/tmp/long', title: 'Latest title', lastUserMessage: 'latest prompt' })
+        expect(summary?.messageCount).toBeUndefined()
+        expect(summary?.size).toBeGreaterThan(1_000_000)
+    })
+
+    it('imports a long transcript in pages that add up to the whole', async () => {
+        // One reply used to carry the whole history and could pass the hub's
+        // socket buffer, which drops the machine mid-reply.
+        const root = useRoot()
+        const text = 'y'.repeat(60_000)
+        const rows: Array<Record<string, unknown>> = [
+            { type: 'user', uuid: 'u1', sessionId: 'sess-paged', cwd: '/tmp/paged', timestamp: '2026-09-01T10:00:00Z', message: { role: 'user', content: 'go' } }
+        ]
+        for (let i = 0; i < 200; i += 1) {
+            rows.push({
+                type: 'assistant', uuid: `a${i}`, sessionId: 'sess-paged', timestamp: '2026-09-01T10:00:01Z',
+                message: { role: 'assistant', content: [{ type: 'text', text }] }
+            })
+            // Title rows are counted but never imported; pages must agree on both.
+            if (i % 10 === 0) rows.push({ type: 'ai-title', sessionId: 'sess-paged', aiTitle: `title ${i}` })
+        }
+        writeTranscript(root, '-tmp-paged', 'sess-paged', rows)
+
+        const ids = new Set(['sess-paged'])
+        let [page] = await listLocalClaudeSessionsWithMessagesByIds(ids)
+        const localIds = page.messages.map((message) => message.localId)
+        let pages = 1
+        while (page.nextCursor) {
+            expect(JSON.stringify(page).length).toBeLessThan(9 * 1024 * 1024)
+            ;[page] = await listLocalClaudeSessionsWithMessagesByIds(ids, null, page.nextCursor)
+            localIds.push(...page.messages.map((message) => message.localId))
+            pages += 1
+        }
+
+        expect(pages).toBeGreaterThan(1)
+        expect(localIds).toEqual(rows.filter((row) => row.type !== 'ai-title').map((row) => `claude:sess-paged:${row.uuid}`))
+    })
+
     it('skips transcripts with nothing visible in them', async () => {
         // Claude leaves a stub file behind for a session that never got a turn;
         // adopting one would produce an empty card.

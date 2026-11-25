@@ -962,7 +962,21 @@ async function listCodexSessionsViaMachine(options: {
     if (!machineId || !options.engine) {
         return { sessions: [], error: 'No online machine available for Codex history import' }
     }
-    const result = await options.engine.listCodexSessionsForMachine(machineId, options.cwd, options.sessionIds)
+    let result: Awaited<ReturnType<SyncEngine['listCodexSessionsForMachine']>>
+    try {
+        result = await options.engine.listCodexSessionsForMachine(machineId, options.cwd, options.sessionIds)
+    } catch (cause) {
+        // A timeout used to escape as a bare 500 after two minutes. Most often
+        // the machine dropped off the hub mid-reply; say so.
+        const message = cause instanceof Error ? cause.message : String(cause)
+        return {
+            sessions: [],
+            machineId,
+            error: /timed out|timeout/i.test(message)
+                ? 'The machine did not answer in time. Its runner may have lost its connection to the hub; try again in a moment.'
+                : message
+        }
+    }
     if (!result || typeof result !== 'object') {
         return { sessions: [], machineId, error: 'Unexpected Codex sessions RPC response' }
     }

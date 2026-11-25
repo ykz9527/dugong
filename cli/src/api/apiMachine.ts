@@ -353,18 +353,19 @@ export class ApiMachineClient {
                         return { success: false, error: 'Path is outside workspace roots' }
                     }
                 }
-                const requestedIds = parsed.data.sessionIds
-                    ? new Set(parsed.data.sessionIds)
-                    : null
-                const allSessions = requestedIds
-                    ? listLocalCodexSessionsWithMessagesByIds(requestedIds)
-                    : listLocalCodexSessionSummaries()
-                const sessions = []
-                for (const session of allSessions) {
-                    if (await this.isLocalSessionWithinWorkspaceRoots(session)) {
-                        sessions.push(session)
+                if (parsed.data.sessionIds) {
+                    const found = await listLocalCodexSessionsWithMessagesByIds(new Set(parsed.data.sessionIds))
+                    const sessions = []
+                    for (const session of found) {
+                        if (await this.isLocalSessionWithinWorkspaceRoots(session)) sessions.push(session)
                     }
+                    return { success: true, sessions }
                 }
+                // The root check runs inside the scan, so sessions outside the
+                // roots do not use up the listing's limit.
+                const sessions = await listLocalCodexSessionSummaries({
+                    accept: (session) => this.isLocalSessionWithinWorkspaceRoots(session)
+                })
                 return { success: true, sessions }
             }
         )
@@ -418,7 +419,16 @@ export class ApiMachineClient {
                     }
                 }
                 if (parsed.data.sessionIds) {
-                    const found = await listLocalClaudeSessionsWithMessagesByIds(new Set(parsed.data.sessionIds), rawCwd || null)
+                    const ids = new Set(parsed.data.sessionIds)
+                    if (parsed.data.cursor && ids.size !== 1) {
+                        return { success: false, error: 'A transcript cursor applies to exactly one session' }
+                    }
+                    let found: Awaited<ReturnType<typeof listLocalClaudeSessionsWithMessagesByIds>>
+                    try {
+                        found = await listLocalClaudeSessionsWithMessagesByIds(ids, rawCwd || null, parsed.data.cursor)
+                    } catch (error) {
+                        return { success: false, error: error instanceof Error ? error.message : 'Failed to read the Claude transcript' }
+                    }
                     const sessions = []
                     for (const session of found) {
                         if (await this.isLocalSessionWithinWorkspaceRoots(session)) sessions.push(session)
