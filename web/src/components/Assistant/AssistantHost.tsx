@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore } from 'react'
+import { Suspense, lazy, useEffect, useRef, useSyncExternalStore } from 'react'
 import type { Task } from '@hapi/protocol'
 import type { ApiClient } from '@/api/client'
 import { FueCallout, FueDot } from '@/components/Fue'
@@ -6,8 +6,11 @@ import { useSidebarResize, type SidebarResizeOptions } from '@/hooks/useSidebarR
 import { setAssistantPanelOpen, toggleAssistantPanel, useAssistantPanelOpen } from '@/lib/assistantPanel'
 import { useFue } from '@/lib/use-fue'
 import { useTranslation } from '@/lib/use-translation'
-import { AssistantPanel } from './AssistantPanel'
 import { AssistantIcon } from './icons'
+
+// The panel is a whole chat (thread, tool cards, composer); it loads when
+// first opened, not with every page.
+const AssistantPanel = lazy(() => import('./AssistantPanel').then((m) => ({ default: m.AssistantPanel })))
 
 /**
  * Where the task assistant lives in the sessions layout.
@@ -75,13 +78,19 @@ export function AssistantHost(props: {
                     data-dragging={resize.isDragging || undefined}
                     onPointerDown={resize.onPointerDown}
                 />
-                <AssistantPanel api={props.api} task={task} width={resize.width} onClose={() => setAssistantPanelOpen(false)} />
+                <Suspense fallback={null}>
+                    <AssistantPanel api={props.api} task={task} width={resize.width} onClose={() => setAssistantPanelOpen(false)} />
+                </Suspense>
             </>
         )
     }
 
     if (open) {
-        return <AssistantPanel api={props.api} task={task} fullScreen onClose={() => setAssistantPanelOpen(false)} />
+        return (
+            <Suspense fallback={null}>
+                <AssistantPanel api={props.api} task={task} fullScreen onClose={() => setAssistantPanelOpen(false)} />
+            </Suspense>
+        )
     }
     // In a task's chat the header carries the button; the composer owns the
     // bottom of the screen there.

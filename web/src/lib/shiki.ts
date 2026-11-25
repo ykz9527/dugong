@@ -1,5 +1,3 @@
-import { createHighlighterCore } from 'shiki/core'
-import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
 import type { HighlighterCore, LanguageRegistration } from 'shiki/core'
 import type { Root, RootContent } from 'hast'
 import { useState, useEffect, useMemo, type ReactNode } from 'react'
@@ -97,11 +95,16 @@ let highlighterPromise: Promise<HighlighterCore> | null = null
 
 function getHighlighter(): Promise<HighlighterCore> {
     if (!highlighterPromise) {
-        highlighterPromise = createHighlighterCore({
+        // The core and its regex engine (~150 KB gzip) load with the first
+        // code block, not with every page.
+        highlighterPromise = Promise.all([
+            import('shiki/core'),
+            import('shiki/engine/javascript'),
+        ]).then(([{ createHighlighterCore }, { createJavaScriptRegexEngine }]) => createHighlighterCore({
             themes: THEMES,
             langs: [],
             engine: createJavaScriptRegexEngine({ forgiving: true }),
-        })
+        }))
     }
     return highlighterPromise
 }

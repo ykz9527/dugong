@@ -1,4 +1,4 @@
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { compress } from 'hono/compress'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
@@ -257,6 +257,15 @@ async function serveEmbeddedAsset(asset: EmbeddedWebAsset, acceptEncoding: strin
     })
 }
 
+/**
+ * A hashed file this build does not have: a tab still running the previous
+ * deploy asking for one of its lazy chunks. Answer 404 rather than the SPA
+ * shell, which would reach the import as HTML (and a cache as a good copy).
+ */
+function missingAsset(c: Context): Response {
+    return c.text('Not found', 404, { 'Cache-Control': 'no-store' })
+}
+
 /** Exported for tests. */
 export function createWebApp(options: {
     getSyncEngine: () => SyncEngine | null
@@ -458,6 +467,9 @@ serve this hub's own frontend — including anything the official app does not h
             if (asset) {
                 return await serveEmbeddedAsset(asset, c.req.header('Accept-Encoding'))
             }
+            if (c.req.path.startsWith('/assets/')) {
+                return missingAsset(c)
+            }
 
             return await next()
         })
@@ -499,6 +511,7 @@ serve this hub's own frontend — including anything the official app does not h
         return next()
     })
     app.use('/assets/*', serveStatic({ root: distDir }))
+    app.get('/assets/*', missingAsset)
 
     app.use('*', async (c, next) => {
         if (c.req.path.startsWith('/api')) {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Link } from '@tanstack/react-router'
 import type { Task, TaskColumn, TaskSchedule } from '@hapi/protocol'
 import { taskNeedsAttention } from '@hapi/protocol'
@@ -12,8 +12,11 @@ import { PRESERVE_SESSION_SIDEBAR_SCROLL } from '@/lib/sessionNavigation'
 import { useTranslation } from '@/lib/use-translation'
 import { StatusDot, taskColumnTone } from './StatusDot'
 import { TaskColumnSelect } from './TaskColumnSelect'
-import { TaskDetailPanel } from './TaskDetailPanel'
 import { useTaskLifecycle } from './useTaskLifecycle'
+
+// Opened from a row's info button; it carries the schedule editor (cronstrue)
+// and run history, which the list itself never needs.
+const TaskDetailPanel = lazy(() => import('./TaskDetailPanel').then((m) => ({ default: m.TaskDetailPanel })))
 
 /**
  * The task list in the sidebar.
@@ -230,16 +233,18 @@ export function TaskSwitcher(props: {
             </div>
 
             {detailTaskId ? (
-                <TaskDetailPanel
-                    api={props.api}
-                    taskId={detailTaskId}
-                    lifecycle={lifecycle}
-                    onClose={() => setDetailTaskId(null)}
-                    onNavigate={() => {
-                        setDetailTaskId(null)
-                        props.onNavigate?.()
-                    }}
-                />
+                <Suspense fallback={null}>
+                    <TaskDetailPanel
+                        api={props.api}
+                        taskId={detailTaskId}
+                        lifecycle={lifecycle}
+                        onClose={() => setDetailTaskId(null)}
+                        onNavigate={() => {
+                            setDetailTaskId(null)
+                            props.onNavigate?.()
+                        }}
+                    />
+                </Suspense>
             ) : null}
         </div>
     )

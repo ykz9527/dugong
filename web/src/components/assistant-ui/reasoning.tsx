@@ -9,11 +9,11 @@ import { cn } from '@/lib/utils'
 import { LEDGER_RUN_ITEM_CLASS } from '@/components/ToolCard/ledger'
 import { useReasoningCollapse } from '@/hooks/useReasoningCollapse'
 import { useOptionalHappyChatContext } from '@/components/AssistantChat/context'
+import { useKatexRehypePlugins } from '@/lib/lazyKatex'
 import {
     MARKDOWN_CLASSNAME,
     MARKDOWN_COMPONENTS_BY_LANGUAGE,
     MARKDOWN_PLUGINS,
-    MARKDOWN_REHYPE_PLUGINS,
     defaultComponents,
     denyOnlyTransform,
     UriConfirmProvider,
@@ -29,6 +29,7 @@ export const Reasoning: ReasoningMessagePartComponent = ({ text, status }) => {
     const previousTextRef = useRef(text)
     const runStartedWithRunningRef = useRef(status.type === 'running')
     const hasTextChangedDuringRunRef = useRef(false)
+    const rehypePlugins = useKatexRehypePlugins()
 
     // The runtime keeps resumed reasoning history complete until a new output
     // block exists. Once this part is actually running, preserve assistant-ui's
@@ -52,7 +53,7 @@ export const Reasoning: ReasoningMessagePartComponent = ({ text, status }) => {
             <MarkdownTextPrimitive
                 smooth={smooth}
                 remarkPlugins={MARKDOWN_PLUGINS}
-                rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+                rehypePlugins={rehypePlugins}
                 components={defaultComponents}
                 componentsByLanguage={MARKDOWN_COMPONENTS_BY_LANGUAGE}
                 urlTransform={denyOnlyTransform}

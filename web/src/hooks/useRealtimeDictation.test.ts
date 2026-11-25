@@ -4,16 +4,15 @@ import type { ApiClient } from '@/api/client'
 import { useRealtimeDictation } from './useRealtimeDictation'
 
 const scribe = vi.hoisted(() => ({
-    options: null as unknown,
+    callbacks: null as null | (() => ScribeCallbacks),
     connect: vi.fn(async () => {}),
     disconnect: vi.fn(),
     commit: vi.fn()
 }))
 
-vi.mock('@elevenlabs/react', () => ({
-    CommitStrategy: { MANUAL: 'manual' },
-    useScribe: (options: unknown) => {
-        scribe.options = options
+vi.mock('./elevenLabsScribe', () => ({
+    createElevenLabsScribe: (callbacks: () => ScribeCallbacks) => {
+        scribe.callbacks = callbacks
         return {
             connect: scribe.connect,
             disconnect: scribe.disconnect,
@@ -23,7 +22,7 @@ vi.mock('@elevenlabs/react', () => ({
 }))
 
 type ScribeCallbacks = {
-    onPartialTranscript: (event: { text: string }) => void
+    onPartialTranscript: (text: string) => void
     onDisconnect: () => void
 }
 
@@ -47,8 +46,8 @@ describe('useRealtimeDictation', () => {
         }))
 
         await act(() => result.current.toggle())
-        const callbacks = scribe.options as ScribeCallbacks
-        act(() => callbacks.onPartialTranscript({ text: 'spoken words' }))
+        const callbacks = scribe.callbacks!()
+        act(() => callbacks.onPartialTranscript('spoken words'))
         expect(onFinalTranscript).not.toHaveBeenCalled()
 
         act(() => callbacks.onDisconnect())

@@ -22,6 +22,50 @@ function spaFallback(): Plugin {
     }
 }
 
+/**
+ * What the service worker precaches: the shell and the screens people open
+ * every day, found by walking the bundle's static imports from them.
+ *
+ * Precaching all ~9 MB (diagram renderers, every shiki grammar, KaTeX fonts
+ * in three formats, voice SDKs) meant a phone pulled the lot over the relay
+ * after its first visit and after every deploy, competing with the requests
+ * the user was waiting on. The rest is cached the first time it is used.
+ */
+const PRECACHED_LAZY_MODULES = [
+    /\/src\/components\/SessionChat\.tsx$/,
+    /\/src\/components\/NewSession\/index\.tsx?$/,
+    /\/src\/components\/Assistant\/AssistantPanel\.tsx$/,
+    /\/src\/components\/Tasks\/TaskDetailPanel\.tsx$/,
+    /\/src\/routes\/(?!sessions\/terminal)/
+]
+const precachedAssets = new Set<string>()
+
+function collectPrecachedAssets(): Plugin {
+    return {
+        name: 'collect-precached-assets',
+        apply: 'build',
+        generateBundle(_options, bundle) {
+            precachedAssets.clear()
+            const visit = (fileName: string) => {
+                const chunk = bundle[fileName]
+                if (!chunk || precachedAssets.has(fileName)) return
+                precachedAssets.add(fileName)
+                if (chunk.type !== 'chunk') return
+                chunk.imports.forEach(visit)
+                chunk.viteMetadata?.importedCss.forEach(visit)
+                chunk.viteMetadata?.importedAssets.forEach(visit)
+            }
+            for (const chunk of Object.values(bundle)) {
+                if (chunk.type !== 'chunk') continue
+                const id = chunk.facadeModuleId ?? ''
+                if (chunk.isEntry || PRECACHED_LAZY_MODULES.some((pattern) => pattern.test(id))) {
+                    visit(chunk.fileName)
+                }
+            }
+        }
+    }
+}
+
 const base = process.env.VITE_BASE_URL || '/'
 const shareAction = shareTargetPathnameFromBase(base)
 const hubTarget = process.env.VITE_HUB_PROXY || 'http://127.0.0.1:3006'
@@ -40,8 +84,15 @@ function readAppVersion(): string {
 }
 
 function getVendorChunkName(id: string): string | undefined {
-    if (!id.includes('/node_modules/')) {
+    if (!id.includes('/node_modules/') && !id.startsWith('\0commonjsHelpers')) {
         return undefined
+    }
+
+    // What the first screen shares with the chat UI. Left to rollup, these
+    // land in the manual chunk that first pulls them in (vendor-assistant),
+    // and the entry then preloads that whole chat-UI chunk to get React.
+    if (id.startsWith('\0commonjsHelpers') || /\/node_modules\/(react|react-dom|scheduler|use-sync-external-store|@radix-ui)\//.test(id)) {
+        return 'vendor-core'
     }
 
     if (id.includes('/node_modules/@xterm/')) {
@@ -84,6 +135,7 @@ export default defineConfig({
     plugins: [
         react(),
         spaFallback(),
+        collectPrecachedAssets(),
         VitePWA({
             // User-controlled reload avoids mid-session surprise reloads (autoUpdate reloads all tabs).
             registerType: 'prompt',
@@ -166,11 +218,13 @@ export default defineConfig({
                 }
             },
             injectManifest: {
-                globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
-                // The SPA entry contains the complete multi-agent control surface.
-                // Keep it available offline after adding Pi history import instead
-                // of silently dropping the entry chunk from the PWA precache.
-                maximumFileSizeToCacheInBytes: 3 * 1024 * 1024
+                globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+                // Keep the entry chunk in the precache however large it grows.
+                maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+                manifestTransforms: [async (entries) => ({
+                    manifest: entries.filter((entry) => !entry.url.startsWith('assets/') || precachedAssets.has(entry.url)),
+                    warnings: []
+                })]
             },
             devOptions: {
                 enabled: true,

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { CommitStrategy, useScribe } from '@elevenlabs/react'
 import {
     ELEVENLABS_REALTIME_TRANSCRIPTION_MODEL,
     type TranscriptionMode,
@@ -14,6 +13,7 @@ import {
     type RealtimeTranscriptionCallbacks,
     type RealtimeTranscriptionSession
 } from './realtimeTranscription'
+import { createElevenLabsScribe, type ElevenLabsScribeCallbacks } from './elevenLabsScribe'
 
 function realtimeBrowserSupport(provider: TranscriptionProvider | null): boolean {
     if (typeof navigator === 'undefined') return false
@@ -71,16 +71,15 @@ export function useRealtimeDictation(config: {
         setStatus('error')
     }, [])
 
-    const elevenLabs = useScribe({
-        modelId: ELEVENLABS_REALTIME_TRANSCRIPTION_MODEL,
-        commitStrategy: CommitStrategy.MANUAL,
+    const elevenLabsCallbacksRef = useRef<ElevenLabsScribeCallbacks | null>(null)
+    elevenLabsCallbacksRef.current = {
         onSessionStarted: () => {
             if (mountedRef.current && elevenLabsActiveRef.current) setStatus('connected')
         },
-        onPartialTranscript: ({ text }) => {
+        onPartialTranscript: (text) => {
             if (elevenLabsActiveRef.current) updatePartial(text)
         },
-        onCommittedTranscript: ({ text }) => {
+        onCommittedTranscript: (text) => {
             if (!elevenLabsActiveRef.current) return
             elevenLabsFinalizedRef.current = true
             elevenLabsActiveRef.current = false
@@ -102,7 +101,8 @@ export function useRealtimeDictation(config: {
             setError('ElevenLabs realtime transcription disconnected')
             setStatus('error')
         }
-    })
+    }
+    const [elevenLabs] = useState(() => createElevenLabsScribe(() => elevenLabsCallbacksRef.current!))
     const elevenLabsRef = useRef(elevenLabs)
     elevenLabsRef.current = elevenLabs
 
@@ -141,7 +141,6 @@ export function useRealtimeDictation(config: {
                 await elevenLabs.connect({
                     token,
                     modelId: ELEVENLABS_REALTIME_TRANSCRIPTION_MODEL,
-                    commitStrategy: CommitStrategy.MANUAL,
                     languageCode: language?.split('-')[0]?.toLowerCase(),
                     microphone: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
                 })

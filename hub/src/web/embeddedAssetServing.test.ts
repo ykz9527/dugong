@@ -66,4 +66,11 @@ describe('embedded web asset serving', () => {
         expect(index.headers.get('Cache-Control')).toBe('no-cache')
         expect(gunzipSync(new Uint8Array(await index.arrayBuffer())).toString()).toContain('<div id="root">')
     })
+
+    it('answers 404 for a hashed file this build does not have', async () => {
+        const response = await makeApp().request('/assets/SessionChat-old123.js')
+
+        expect(response.status).toBe(404)
+        expect(response.headers.get('Cache-Control')).toBe('no-store')
+    })
 })

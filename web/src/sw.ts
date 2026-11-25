@@ -41,6 +41,22 @@ registerRoute(new NavigationRoute(
     { denylist: [/\/api\//, /\/cli\//, /\/socket\.io\//, /\/health$/] }
 ))
 
+// Built files the precache leaves out (diagram renderers, code grammars,
+// KaTeX, voice SDKs): content-hashed, so the first copy is good for good.
+const assetsPath = new URL('assets/', self.registration.scope).pathname
+registerRoute(
+    ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith(assetsPath),
+    new CacheFirst({
+        cacheName: 'assets',
+        plugins: [
+            new ExpirationPlugin({
+                maxEntries: 300,
+                maxAgeSeconds: 60 * 60 * 24 * 30
+            })
+        ]
+    })
+)
+
 registerRoute(
     ({ url }) => url.pathname === '/api/sessions',
     new NetworkFirst({

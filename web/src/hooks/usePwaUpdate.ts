@@ -70,11 +70,20 @@ export function setupRegistrationUpdateChecks(
         }
     }
 
+    // A lazy chunk that will not load usually means a deploy replaced it
+    // (the precache only holds the everyday screens). Look for the new
+    // version now, so the update prompt shows up instead of waiting an hour.
+    const handlePreloadError = () => {
+        void registration.update()
+    }
+
     document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('vite:preloadError', handlePreloadError)
 
     return () => {
         window.clearInterval(intervalId)
         document.removeEventListener('visibilitychange', handleVisibilityChange)
+        window.removeEventListener('vite:preloadError', handlePreloadError)
     }
 }
 

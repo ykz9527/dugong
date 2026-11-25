@@ -8,7 +8,6 @@ import {
     MARKDOWN_PLUGINS_STANDALONE,
     MARKDOWN_PLUGINS_STANDALONE_WITH_BREAKS,
     MARKDOWN_PLUGINS_WITH_BREAKS,
-    MARKDOWN_REHYPE_PLUGINS,
     MARKDOWN_COMPONENTS_BY_LANGUAGE,
     MARKDOWN_CLASSNAME,
     defaultComponents,
@@ -18,6 +17,7 @@ import {
 import { SyntaxHighlighter } from '@/components/assistant-ui/shiki-highlighter'
 import type { CodeHeaderProps, SyntaxHighlighterProps } from '@assistant-ui/react-markdown'
 import { cn } from '@/lib/utils'
+import { useKatexRehypePlugins } from '@/lib/lazyKatex'
 
 interface MarkdownRendererProps {
     content: string
@@ -59,6 +59,7 @@ function StandalonePre(props: ComponentPropsWithoutRef<'pre'>) {
 }
 
 function StandaloneMarkdownContent(props: MarkdownRendererProps) {
+    const rehypePlugins = useKatexRehypePlugins()
     const mergedComponents = props.components
         ? { ...defaultComponents, ...props.components }
         : defaultComponents
@@ -82,7 +83,7 @@ function StandaloneMarkdownContent(props: MarkdownRendererProps) {
             <div className={cn(MARKDOWN_CLASSNAME, props.className)}>
                 <ReactMarkdown
                     remarkPlugins={props.preserveSingleLineBreaks ? MARKDOWN_PLUGINS_STANDALONE_WITH_BREAKS : MARKDOWN_PLUGINS_STANDALONE}
-                    rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+                    rehypePlugins={rehypePlugins}
                     components={components}
                     urlTransform={denyOnlyTransform}
                 >
@@ -94,6 +95,7 @@ function StandaloneMarkdownContent(props: MarkdownRendererProps) {
 }
 
 function MarkdownContent(props: MarkdownRendererProps) {
+    const rehypePlugins = useKatexRehypePlugins()
     const mergedComponents = props.components
         ? { ...defaultComponents, ...props.components }
         : defaultComponents
@@ -103,7 +105,7 @@ function MarkdownContent(props: MarkdownRendererProps) {
             <TextMessagePartProvider text={props.content}>
                 <MarkdownTextPrimitive
                     remarkPlugins={props.preserveSingleLineBreaks ? MARKDOWN_PLUGINS_WITH_BREAKS : MARKDOWN_PLUGINS}
-                    rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+                    rehypePlugins={rehypePlugins}
                     components={mergedComponents}
                     componentsByLanguage={MARKDOWN_COMPONENTS_BY_LANGUAGE}
                     urlTransform={denyOnlyTransform}

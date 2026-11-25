@@ -11,7 +11,7 @@ import {
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
 import remarkMath from 'remark-math'
-import rehypeKatex from 'rehype-katex'
+import { MARKDOWN_REHYPE_PLUGINS, useKatexRehypePlugins } from '@/lib/lazyKatex'
 import remarkDisableIndentedCode from '@/lib/remark-disable-indented-code'
 import remarkRepairTables from '@/lib/remark-repair-tables'
 import { useNavigate } from '@tanstack/react-router'
@@ -109,7 +109,7 @@ export const MARKDOWN_PLUGINS_STANDALONE_WITH_BREAKS = [
     ...MARKDOWN_PLUGIN_TAIL_STANDALONE,
 ] satisfies NonNullable<MarkdownTextPrimitiveProps['remarkPlugins']>
 
-export const MARKDOWN_REHYPE_PLUGINS = [rehypeKatex] satisfies NonNullable<MarkdownTextPrimitiveProps['rehypePlugins']>
+export { MARKDOWN_REHYPE_PLUGINS }
 export const MARKDOWN_CLASSNAME = 'aui-md happy-chat-text min-w-0 max-w-full break-words text-[var(--app-fg)]'
 export const MARKDOWN_COMPONENTS_BY_LANGUAGE = {
     mermaid: {
@@ -881,12 +881,13 @@ export const defaultComponents: DefaultComponentsMap = memoizeMarkdownComponents
 // the custom remark plugins) on every render, and it subscribes to its own
 // text part, so a parent re-render with the same `smooth` has nothing to do.
 export const MarkdownText = memo(function MarkdownText({ smooth }: { smooth?: boolean } = {}) {
+    const rehypePlugins = useKatexRehypePlugins()
     return (
         <UriConfirmProvider>
             <MarkdownTextPrimitive
                 smooth={smooth}
                 remarkPlugins={MARKDOWN_PLUGINS}
-                rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+                rehypePlugins={rehypePlugins}
                 components={defaultComponents}
                 componentsByLanguage={MARKDOWN_COMPONENTS_BY_LANGUAGE}
                 urlTransform={denyOnlyTransform}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePageEnter } from '@/lib/use-page-enter'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -17,12 +17,9 @@ import {
 import { getScrollRestorationKey } from '@/lib/scrollRestorationKey'
 import { PRESERVE_SESSION_SIDEBAR_SCROLL } from '@/lib/sessionNavigation'
 import { App } from '@/App'
-import { SessionChat } from '@/components/SessionChat'
 import { SidebarHeader } from '@/components/SidebarHeader'
 import { TaskSwitcher, countAttentionTasks } from '@/components/Tasks/TaskSwitcher'
 import { useNewTaskDialog } from '@/components/Tasks/useNewTaskDialog'
-import { NewSession } from '@/components/NewSession'
-import { WorkspaceBrowser } from '@/components/WorkspaceBrowser'
 import { LoadingState } from '@/components/LoadingState'
 import { useAppContext } from '@/lib/app-context'
 import { useAppGoBack } from '@/hooks/useAppGoBack'
@@ -61,6 +58,31 @@ import { getSupersedingSessionId, prepareFollowSupersedingSession, shouldFollowS
 import { migrateSuppressedSendError } from '@/lib/suppressed-send-error'
 import { retargetSharePendingTransfer, setSharePendingTransfer } from '@/lib/sharePendingState'
 import { deleteShareTransfer, parseShareSearch } from '@/lib/shareTransfer'
+
+// The chat view (thread, tool cards, composer, markdown) is most of the app's
+// code. It loads beside the task list rather than before it: idle time after
+// the list renders, or the moment a session route mounts, whichever is first.
+const loadSessionChat = () => import('@/components/SessionChat')
+const SessionChat = lazy(() => loadSessionChat().then((m) => ({ default: m.SessionChat })))
+const NewSession = lazy(() => import('@/components/NewSession').then((m) => ({ default: m.NewSession })))
+const WorkspaceBrowser = lazy(() => import('@/components/WorkspaceBrowser').then((m) => ({ default: m.WorkspaceBrowser })))
+
+function usePrefetchSessionChat(): void {
+    useEffect(() => {
+        const idle = window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1500))
+        const cancel = window.cancelIdleCallback ?? window.clearTimeout
+        const handle = idle(() => { void loadSessionChat() })
+        return () => cancel(handle)
+    }, [])
+}
+
+function ChunkFallback() {
+    return (
+        <div className="flex-1 flex items-center justify-center p-4">
+            <LoadingState className="text-sm" />
+        </div>
+    )
+}
 
 // Routes off the main path load on first visit, keeping them (and what only
 // they import) out of the entry chunk every device downloads and parses.
@@ -162,6 +184,7 @@ function SettingsIcon(props: { className?: string }) {
 
 function SessionsPage() {
     const { api, baseUrl } = useAppContext()
+    usePrefetchSessionChat()
     const navigate = useNavigate()
     const pathname = useLocation({ select: location => location.pathname })
     const contentRef = useRef<HTMLDivElement>(null)
@@ -309,6 +332,8 @@ function classifySendError(
 }
 
 function SessionPage() {
+    // Start the chat chunk with the session's data requests, not after them.
+    void loadSessionChat()
     const { api, titleSuggestionAvailable = false } = useAppContext()
     const { t } = useTranslation()
     const goBack = useAppGoBack()
@@ -757,57 +782,59 @@ function SessionPage() {
     }
 
     return (
-        <SessionChat
-            api={api}
-            titleSuggestionAvailable={titleSuggestionAvailable}
-            session={session}
-            cursorChatOnDisk={cursorChatStoreStatus?.onDisk}
-            reopenDisabledReason={cursorReopenDisabledReason}
-            reopenHint={cursorReopenUnverifiedHint}
-            messages={messages}
-            messagesWarning={messagesWarning}
-            hasMoreMessages={messagesHasMore}
-            isSyncingTail={messagesSyncingTail}
-            isLoadingMoreMessages={messagesLoadingMore}
-            isSending={isSending}
-            sendSettlement={sendSettlement}
-            viewMode={messagesViewMode}
-            messagesVersion={messagesVersion}
-            historyVersion={historyVersion}
-            tailRevision={tailRevision}
-            onBack={goBack}
-            onRefresh={refreshSelectedSession}
-            onLoadMore={loadMoreMessages}
-            onCancelLoadMore={cancelLoadMoreMessages}
-            onSend={sendMessage}
-            resolveSessionIdForUpload={async (id) => (await resolveSessionId(id)).sessionId}
-            onUploadSessionResolved={handleSessionResolved}
-            onViewModeChange={setViewMode}
-            onRetryMessage={retryMessage}
-            autocompleteSuggestions={getAutocompleteSuggestions}
-            availableSlashCommands={slashCommands}
-            sendError={sendError}
-            onClearSendError={clearSendError}
-            onSuppressSendErrorRestore={suppressSendErrorRestore}
-            initialOutlineOpen={outline}
-            onInitialOutlineConsumed={handleInitialOutlineConsumed}
-            onAbortRestore={(text) => {
-                sendErrorIdRef.current += 1
-                setSendErrors((prev) => ({
-                    ...prev,
-                    [sessionId]: {
-                        id: sendErrorIdRef.current,
-                        text,
-                        message: t('chat.sendError.aborted'),
-                        code: 'abort',
-                        scheduledAt: null,
-                        deliveryMode: 'queue',
-                        mutationStarted: true,
-                        restoreSuppressed: false
-                    }
-                }))
-            }}
-        />
+        <Suspense fallback={<ChunkFallback />}>
+            <SessionChat
+                api={api}
+                titleSuggestionAvailable={titleSuggestionAvailable}
+                session={session}
+                cursorChatOnDisk={cursorChatStoreStatus?.onDisk}
+                reopenDisabledReason={cursorReopenDisabledReason}
+                reopenHint={cursorReopenUnverifiedHint}
+                messages={messages}
+                messagesWarning={messagesWarning}
+                hasMoreMessages={messagesHasMore}
+                isSyncingTail={messagesSyncingTail}
+                isLoadingMoreMessages={messagesLoadingMore}
+                isSending={isSending}
+                sendSettlement={sendSettlement}
+                viewMode={messagesViewMode}
+                messagesVersion={messagesVersion}
+                historyVersion={historyVersion}
+                tailRevision={tailRevision}
+                onBack={goBack}
+                onRefresh={refreshSelectedSession}
+                onLoadMore={loadMoreMessages}
+                onCancelLoadMore={cancelLoadMoreMessages}
+                onSend={sendMessage}
+                resolveSessionIdForUpload={async (id) => (await resolveSessionId(id)).sessionId}
+                onUploadSessionResolved={handleSessionResolved}
+                onViewModeChange={setViewMode}
+                onRetryMessage={retryMessage}
+                autocompleteSuggestions={getAutocompleteSuggestions}
+                availableSlashCommands={slashCommands}
+                sendError={sendError}
+                onClearSendError={clearSendError}
+                onSuppressSendErrorRestore={suppressSendErrorRestore}
+                initialOutlineOpen={outline}
+                onInitialOutlineConsumed={handleInitialOutlineConsumed}
+                onAbortRestore={(text) => {
+                    sendErrorIdRef.current += 1
+                    setSendErrors((prev) => ({
+                        ...prev,
+                        [sessionId]: {
+                            id: sendErrorIdRef.current,
+                            text,
+                            message: t('chat.sendError.aborted'),
+                            code: 'abort',
+                            scheduledAt: null,
+                            deliveryMode: 'queue',
+                            mutationStarted: true,
+                            restoreSuppressed: false
+                        }
+                    }))
+                }}
+            />
+        </Suspense>
     )
 }
 
@@ -958,16 +985,18 @@ function NewSessionPage() {
                     </div>
                 ) : null}
 
-                <NewSession
-                    api={api}
-                    machines={machines}
-                    isLoading={machinesLoading}
-                    onCancel={handleCancel}
-                    onSuccess={handleSuccess}
-                    onChooseFolder={handleChooseFolder}
-                    initialDirectory={initialDirectory}
-                    initialMachineId={initialMachineId}
-                />
+                <Suspense fallback={<ChunkFallback />}>
+                    <NewSession
+                        api={api}
+                        machines={machines}
+                        isLoading={machinesLoading}
+                        onCancel={handleCancel}
+                        onSuccess={handleSuccess}
+                        onChooseFolder={handleChooseFolder}
+                        initialDirectory={initialDirectory}
+                        initialMachineId={initialMachineId}
+                    />
+                </Suspense>
             </div>
         </div>
     )
@@ -1008,13 +1037,15 @@ function BrowsePage() {
             </div>
 
             <div className="flex-1 min-h-0">
-                <WorkspaceBrowser
-                    api={api}
-                    machines={machines}
-                    machinesLoading={machinesLoading}
-                    onStartSession={handleStartSession}
-                    initialMachineId={initialMachineId}
-                />
+                <Suspense fallback={<ChunkFallback />}>
+                    <WorkspaceBrowser
+                        api={api}
+                        machines={machines}
+                        machinesLoading={machinesLoading}
+                        onStartSession={handleStartSession}
+                        initialMachineId={initialMachineId}
+                    />
+                </Suspense>
             </div>
             {newTask.dialog}
         </div>

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import { unified, type PluggableList } from 'unified'
 import remarkParse from 'remark-parse'
 import remarkRehype from 'remark-rehype'
@@ -13,6 +13,10 @@ import {
     MARKDOWN_PLUGINS_WITH_BREAKS,
     MARKDOWN_REHYPE_PLUGINS,
 } from '@/components/assistant-ui/markdown-text'
+import { loadKatex } from '@/lib/lazyKatex'
+
+// KaTeX loads on first sight of math; these tests render synchronously.
+beforeAll(() => loadKatex())
 
 describe('MARKDOWN_PLUGINS integration', () => {
     it('includes remarkNonHttpsAutolink', () => {
