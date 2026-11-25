@@ -3,7 +3,7 @@ import { getAppGlobalSseSubscription, getAppSessionSseSubscription } from './app
 
 describe('app SSE subscriptions', () => {
     it('always uses a global all:true subscription for the session list', () => {
-        expect(getAppGlobalSseSubscription()).toEqual({ all: true })
+        expect(getAppGlobalSseSubscription()).toEqual({ all: true, omitMessageBodies: true })
     })
 
     it('uses a session-scoped subscription only when a session is selected', () => {

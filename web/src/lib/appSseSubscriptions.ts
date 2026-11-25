@@ -1,5 +1,8 @@
 export type AppGlobalSseSubscription = {
     all: true
+    /** The app-wide stream renders no transcript; the open session has its
+     *  own stream. See `omitMessageBodies` in the hub's SSE manager. */
+    omitMessageBodies: true
 }
 
 export type AppSessionSseSubscription = {
@@ -7,7 +10,7 @@ export type AppSessionSseSubscription = {
 }
 
 export function getAppGlobalSseSubscription(): AppGlobalSseSubscription {
-    return { all: true }
+    return { all: true, omitMessageBodies: true }
 }
 
 export function getAppSessionSseSubscription(

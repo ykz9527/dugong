@@ -14,6 +14,15 @@ export type SSESubscription = {
      * sees everyone's work. Decides who gets a toast, not who gets events.
      */
     workspaceUserId: string | null
+    /**
+     * An `all` subscription that renders no transcripts (the web app's
+     * app-wide stream) asks to be spared other sessions' message bodies.
+     * Unfiltered, they are every agent's whole output - megabytes an hour -
+     * pushed to each open tab, mostly through the relay tunnel, only to be
+     * dropped on arrival. Scheduled messages still go out: they change the
+     * session list.
+     */
+    omitMessageBodies: boolean
 }
 
 type SSEConnection = SSESubscription & {
@@ -74,6 +83,7 @@ export class SSEManager {
         sessionId?: string | null
         machineId?: string | null
         workspaceUserId?: string | null
+        omitMessageBodies?: boolean
         visibility?: VisibilityState
         /** Last event id the client saw; enables replay instead of resync. */
         resumeFrom?: string | null
@@ -87,6 +97,7 @@ export class SSEManager {
             sessionId: options.sessionId ?? null,
             machineId: options.machineId ?? null,
             workspaceUserId: options.workspaceUserId ?? null,
+            omitMessageBodies: Boolean(options.omitMessageBodies),
             send: options.send,
             sendHeartbeat: options.sendHeartbeat,
             pending: null
@@ -113,6 +124,7 @@ export class SSEManager {
             sessionId: subscription.sessionId,
             machineId: subscription.machineId,
             workspaceUserId: subscription.workspaceUserId,
+            omitMessageBodies: subscription.omitMessageBodies,
             resume,
             replay
         }
@@ -330,7 +342,15 @@ export class SSEManager {
         }
 
         if (event.type === 'message-received' || event.type === 'scheduled-matured') {
-            return connection.all || connection.sessionId === event.sessionId
+            if (connection.sessionId === event.sessionId) {
+                return true
+            }
+            if (!connection.all) {
+                return false
+            }
+            return !(connection.omitMessageBodies
+                && event.type === 'message-received'
+                && event.message.scheduledAt == null)
         }
 
         if (event.type === 'connection-changed') {

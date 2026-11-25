@@ -120,6 +120,32 @@ describe('SSEManager namespace filtering', () => {
     })
 })
 
+describe('SSEManager message bodies', () => {
+    function message(sessionId: string, scheduledAt: number | null): SyncEvent {
+        return {
+            type: 'message-received',
+            namespace: 'alpha',
+            sessionId,
+            message: { id: `m-${sessionId}`, seq: 1, localId: 'l1', content: { big: 'x' }, createdAt: 1, scheduledAt }
+        }
+    }
+
+    it('spares an app-wide stream other sessions\' message bodies but keeps scheduled ones', () => {
+        const manager = new SSEManager(0, new VisibilityTracker())
+        const lean: SyncEvent[] = []
+        const full: SyncEvent[] = []
+        manager.subscribe({ id: 'lean', namespace: 'alpha', all: true, omitMessageBodies: true, send: (e) => { lean.push(e) }, sendHeartbeat: () => {} })
+        manager.subscribe({ id: 'full', namespace: 'alpha', all: true, send: (e) => { full.push(e) }, sendHeartbeat: () => {} })
+
+        manager.broadcast(message('s1', null))
+        manager.broadcast(message('s1', Date.now() + 60_000))
+        manager.broadcast({ type: 'messages-consumed', namespace: 'alpha', sessionId: 's1', localIds: ['l1'] } as SyncEvent)
+
+        expect(full.map((e) => e.type)).toEqual(['message-received', 'message-received', 'messages-consumed'])
+        expect(lean.map((e) => e.type)).toEqual(['message-received', 'messages-consumed'])
+    })
+})
+
 describe('SSEManager reconnect replay', () => {
     type Sent = { event: SyncEvent; eventId: string | undefined }
 

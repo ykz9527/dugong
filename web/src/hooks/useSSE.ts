@@ -22,6 +22,7 @@ import type {
     SyncEvent
 } from '@/types/api'
 import { queryKeys } from '@/lib/query-keys'
+import { applyTaskUpdateToLists } from '@/lib/taskListPatch'
 import { getActiveWorkspaceRoots, useActiveWorkspaceUserId } from '@/lib/activeWorkspaceUser'
 import { clearMessageWindow, getMessageWindowState, ingestIncomingMessages, markMessagesConsumed, markMessagesIndeterminate, markMessagesRequeued, removeOptimisticMessage, updateMessageStatus } from '@/lib/message-window-store'
 import { applySessionDetailPatch } from '@/lib/sessionPatch'
@@ -35,6 +36,7 @@ type SSESubscription = {
     all?: boolean
     sessionId?: string
     machineId?: string
+    omitMessageBodies?: boolean
 }
 
 export type SSEScope = 'global' | 'full'
@@ -284,6 +286,9 @@ function buildEventsUrl(
     if (subscription.all) {
         params.set('all', 'true')
     }
+    if (subscription.omitMessageBodies) {
+        params.set('messages', 'none')
+    }
     if (subscription.sessionId) {
         params.set('sessionId', subscription.sessionId)
     }
@@ -335,9 +340,13 @@ export function useSSE(options: {
         sessions: boolean
         machines: boolean
         tasks: boolean
+        /** Task queries other than the lists (detail with runs, schedules). */
+        taskSideQueries: boolean
+        /** Lists a task-updated event could not be patched into, by JSON key. */
+        staleTaskLists: Map<string, readonly unknown[]>
         sessionIds: Set<string>
         scratchlistSessionIds: Set<string>
-    }>({ sessions: false, machines: false, tasks: false, sessionIds: new Set(), scratchlistSessionIds: new Set() })
+    }>({ sessions: false, machines: false, tasks: false, taskSideQueries: false, staleTaskLists: new Map(), sessionIds: new Set(), scratchlistSessionIds: new Set() })
     const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const reconnectAttemptRef = useRef(0)
     // Set when a reconnect was due while the tab was hidden. Hidden tabs do
@@ -395,6 +404,8 @@ export function useSSE(options: {
             pendingInvalidationsRef.current.sessions = false
             pendingInvalidationsRef.current.machines = false
             pendingInvalidationsRef.current.tasks = false
+            pendingInvalidationsRef.current.taskSideQueries = false
+            pendingInvalidationsRef.current.staleTaskLists.clear()
             pendingInvalidationsRef.current.sessionIds.clear()
             pendingInvalidationsRef.current.scratchlistSessionIds.clear()
             if (reconnectTimerRef.current) {
@@ -501,6 +512,8 @@ export function useSSE(options: {
                 !pending.sessions
                 && !pending.machines
                 && !pending.tasks
+                && !pending.taskSideQueries
+                && pending.staleTaskLists.size === 0
                 && pending.sessionIds.size === 0
                 && pending.scratchlistSessionIds.size === 0
             ) {
@@ -510,12 +523,16 @@ export function useSSE(options: {
             const shouldInvalidateSessions = pending.sessions
             const shouldInvalidateMachines = pending.machines
             const shouldInvalidateTasks = pending.tasks
+            const shouldInvalidateTaskSideQueries = pending.taskSideQueries
+            const staleTaskLists = Array.from(pending.staleTaskLists.values())
             const sessionIds = Array.from(pending.sessionIds)
             const scratchlistSessionIds = Array.from(pending.scratchlistSessionIds)
 
             pending.sessions = false
             pending.machines = false
             pending.tasks = false
+            pending.taskSideQueries = false
+            pending.staleTaskLists.clear()
             pending.sessionIds.clear()
             pending.scratchlistSessionIds.clear()
 
@@ -535,6 +552,16 @@ export function useSSE(options: {
             // One prefix invalidation covers every filtered board list.
             if (shouldInvalidateTasks) {
                 tasks.push(queryClient.invalidateQueries({ queryKey: queryKeys.tasks }))
+            } else {
+                if (shouldInvalidateTaskSideQueries) {
+                    tasks.push(queryClient.invalidateQueries({
+                        queryKey: queryKeys.tasks,
+                        predicate: (query) => query.queryKey[1] !== queryKeys.taskLists[1]
+                    }))
+                }
+                for (const queryKey of staleTaskLists) {
+                    tasks.push(queryClient.invalidateQueries({ queryKey, exact: true }))
+                }
             }
 
             if (tasks.length === 0) {
@@ -560,6 +587,20 @@ export function useSSE(options: {
 
         const queueTaskInvalidation = () => {
             pendingInvalidationsRef.current.tasks = true
+            scheduleInvalidationFlush()
+        }
+
+        const applyTaskUpdate = (data: unknown) => {
+            const stale = applyTaskUpdateToLists(queryClient, data)
+            if (stale === 'all') {
+                queueTaskInvalidation()
+                return
+            }
+            const pending = pendingInvalidationsRef.current
+            pending.taskSideQueries = true
+            for (const queryKey of stale) {
+                pending.staleTaskLists.set(JSON.stringify(queryKey), queryKey)
+            }
             scheduleInvalidationFlush()
         }
 
@@ -913,11 +954,10 @@ export function useSSE(options: {
                 }
             }
 
-            // The board renders from a filtered list query, so a card that
-            // moved cannot be patched in place reliably (it may leave or enter
-            // the filter). Refetching the prefix is both correct and cheap.
+            // The event carries the whole card: lists holding it are patched
+            // in place; only lists it may be entering are refetched.
             if (event.type === 'task-updated') {
-                queueTaskInvalidation()
+                applyTaskUpdate(event.data)
             }
 
             if (event.type === 'assistant-memory-updated') {

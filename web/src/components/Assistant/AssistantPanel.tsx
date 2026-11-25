@@ -284,7 +284,7 @@ function PanelBody(props: {
     const actions = useAssistantActions(props.api, props.workspaceUserId)
     const { questions } = useAssistantQuestions(props.api, props.workspaceUserId)
     const answer = useAnswerAssistantQuestion(props.api, props.workspaceUserId)
-    const { tasks } = useTasks(props.api)
+    const { tasks } = useTasks(props.api, { includeArchived: true })
     const taskTitles = new Map(tasks.map((task) => [task.id, task.title]))
     const openQuestions = questions.filter((question) => question.status === 'open').length
     const [seenAt, setSeenAt] = useState(() => readSeenAt(props.workspaceUserId))

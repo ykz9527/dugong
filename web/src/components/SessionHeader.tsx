@@ -190,7 +190,7 @@ export function SessionHeader(props: {
     const [taskSwitcherOpen, setTaskSwitcherOpen] = useState(false)
     // Same cache entry the sidebar reads; on narrow screens nothing else has
     // fetched it, which is exactly when the count is worth showing.
-    const { tasks } = useTasks(api)
+    const { tasks } = useTasks(api, { includeArchived: true })
     const attentionTaskCount = countAttentionTasks(tasks)
     const title = useMemo(() => getSessionTitle(session), [session])
     const worktreeBranch = session.metadata?.worktree?.branch?.trim() || null

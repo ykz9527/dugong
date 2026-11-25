@@ -53,6 +53,7 @@ export function createEventsRoutes(
         // The workspace user the tab is filtered to (none: sees everyone's
         // work); only used to decide who a toast is for.
         const workspaceUserId = parseOptionalId(query.workspaceUserId)
+        const omitMessageBodies = query.messages === 'none'
         const subscriptionId = randomUUID()
         const visibility = parseVisibility(query.visibility)
         // Native EventSource auto-reconnects keep the original URL and carry
@@ -98,6 +99,7 @@ export function createEventsRoutes(
                 sessionId: resolvedSessionId,
                 machineId,
                 workspaceUserId,
+                omitMessageBodies,
                 visibility,
                 resumeFrom,
                 send: (event, eventId) => stream.writeSSE({ data: JSON.stringify(event), id: eventId }),
