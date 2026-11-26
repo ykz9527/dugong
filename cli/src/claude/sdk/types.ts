@@ -104,6 +104,8 @@ export interface SDKControlResponse extends SDKMessage {
         request_id: string
         subtype: 'success' | 'error'
         error?: string
+        /** The request's payload, e.g. `models` for `initialize`. */
+        response?: Record<string, unknown>
     }
 }
 

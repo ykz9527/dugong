@@ -934,6 +934,22 @@ export type CodexModelsResponse = {
 
 export type ListCodexModelsResponse = CodexModelsResponse
 
+/** One entry of Claude Code's own model list (its `initialize` reply). */
+export type ClaudeModelSummary = {
+    /** What `--model` takes: an alias (`opus`), `default`, or a full id. */
+    value: string
+    /** The id the value resolves to on this machine, e.g. `claude-opus-5-5`. */
+    resolvedModel: string | null
+    /** Claude Code's name for it, e.g. "Opus 5.5". */
+    displayName: string
+}
+
+export type ClaudeModelsResponse = {
+    success: boolean
+    models?: ClaudeModelSummary[]
+    error?: string
+}
+
 export type OpencodeModelSummary = {
     modelId: string
     name?: string

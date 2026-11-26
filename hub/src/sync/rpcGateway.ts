@@ -12,6 +12,7 @@ import {
 import type {
     AgyModelsResponse,
     CodexModelSummary,
+    ClaudeModelsResponse,
     CodexModelsResponse,
     CommandResponse,
     CursorModelSummary,
@@ -430,6 +431,10 @@ export class RpcGateway {
             skills?: Array<{ name: string; description?: string }>
             error?: string
         }
+    }
+
+    async listClaudeModelsForMachine(machineId: string): Promise<ClaudeModelsResponse> {
+        return await this.machineRpc(machineId, RPC_METHODS.ListClaudeModels, {}, MODEL_LIST_RPC_TIMEOUT_MS) as ClaudeModelsResponse
     }
 
     async listCodexModelsForMachine(machineId: string): Promise<RpcListCodexModelsResponse> {

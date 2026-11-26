@@ -248,6 +248,35 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
     })
 
+    app.get('/machines/:id/claude-models', async (c) => {
+        const engine = getSyncEngine()
+        if (!engine) {
+            return c.json({ success: false, error: 'Not connected' }, 503)
+        }
+
+        const machineId = c.req.param('id')
+        const machine = requireMachine(c, engine, machineId)
+        if (machine instanceof Response) {
+            return machine
+        }
+
+        try {
+            return c.json(await engine.listClaudeModelsForMachine(machineId))
+        } catch (error) {
+            if (error instanceof RpcTargetMissingError) {
+                return c.json({
+                    success: false,
+                    error: error.message,
+                    code: RPC_TARGET_MISSING_ERROR_CODE
+                }, 503)
+            }
+            return c.json({
+                success: false,
+                error: error instanceof Error ? error.message : 'Failed to list Claude models'
+            }, 500)
+        }
+    })
+
     app.get('/machines/:id/codex-models', async (c) => {
         const engine = getSyncEngine()
         if (!engine) {

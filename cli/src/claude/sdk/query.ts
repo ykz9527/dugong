@@ -179,6 +179,21 @@ export class Query implements AsyncIterableIterator<SDKMessage> {
     }
 
     /**
+     * The models this Claude Code offers, as its `initialize` reply lists them
+     * (what the official SDK's `supportedModels()` returns): each alias with
+     * the id it resolves to and a display name such as "Opus 5.5". Settings
+     * such as `availableModels` already apply.
+     */
+    async supportedModels(): Promise<unknown[]> {
+        if (!this.childStdin) {
+            throw new Error('supportedModels requires --input-format stream-json')
+        }
+        const response = await this.request({ subtype: 'initialize' }, this.childStdin)
+        const models = response.response?.models
+        return Array.isArray(models) ? models : []
+    }
+
+    /**
      * Send control request to Claude process
      */
     private request(request: ControlRequest, childStdin: Writable): Promise<SDKControlResponse['response']> {

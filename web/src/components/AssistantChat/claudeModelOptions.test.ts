@@ -50,3 +50,35 @@ describe('getClaudeResolvedModel', () => {
         expect(getClaudeResolvedModel(null, null)).toBeNull()
     })
 })
+
+describe('Claude options named from Claude Code\'s model list', () => {
+    // What Claude Code 2.1.332 lists on 37.1, where availableModels is sonnet/opus/haiku.
+    const catalog = [
+        { value: 'default', resolvedModel: 'claude-opus-5-5', displayName: 'Default (recommended)' },
+        { value: 'opus', resolvedModel: 'claude-opus-5-5', displayName: 'Opus 5.5' },
+        { value: 'sonnet', resolvedModel: 'claude-sonnet-5-5', displayName: 'Sonnet 5.5' },
+        { value: 'haiku', resolvedModel: 'claude-haiku-5-5', displayName: 'Haiku 5.5' },
+        { value: 'claude-opus-4-8', resolvedModel: 'claude-opus-4-8', displayName: 'Opus 4.8' }
+    ]
+
+    it('names each choice by version, 1M after its base, and marks aliases the machine lacks', () => {
+        expect(getClaudeComposerModelOptions(null, catalog)).toEqual([
+            { value: null, label: 'Default · Opus 5.5', resolvedModel: 'claude-opus-5-5' },
+            { value: 'sonnet', label: 'Sonnet 5.5', resolvedModel: 'claude-sonnet-5-5' },
+            { value: 'sonnet[1m]', label: 'Sonnet 5.5 1M', resolvedModel: 'claude-sonnet-5-5' },
+            { value: 'opus', label: 'Opus 5.5', resolvedModel: 'claude-opus-5-5' },
+            { value: 'opus[1m]', label: 'Opus 5.5 1M', resolvedModel: 'claude-opus-5-5' },
+            { value: 'fable', label: 'Fable', unavailable: true },
+            { value: 'fable[1m]', label: 'Fable 1M', unavailable: true },
+            { value: 'haiku', label: 'Haiku 5.5', resolvedModel: 'claude-haiku-5-5' },
+        ])
+    })
+
+    it('names a pinned full id too, and marks nothing when the list names no alias', () => {
+        expect(getClaudeComposerModelOptions('claude-opus-4-8', catalog)[1]).toEqual(
+            { value: 'claude-opus-4-8', label: 'Opus 4.8', resolvedModel: 'claude-opus-4-8' }
+        )
+        const fullIdsOnly = [{ value: 'claude-opus-4-8', resolvedModel: 'claude-opus-4-8', displayName: 'Opus 4.8' }]
+        expect(getClaudeComposerModelOptions(null, fullIdsOnly).some((option) => option.unavailable)).toBe(false)
+    })
+})

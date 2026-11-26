@@ -183,6 +183,41 @@ describe('HappyComposer session settings sheet', () => {
         else expect(within(group).queryByText(/^Now:/)).toBeNull()
     })
 
+    describe('with Claude Code\'s model list', () => {
+        const claudeModels = [
+            { value: 'default', resolvedModel: 'claude-opus-5-5', displayName: 'Default (recommended)' },
+            { value: 'opus', resolvedModel: 'claude-opus-5-5', displayName: 'Opus 5.5' },
+            { value: 'sonnet', resolvedModel: 'claude-sonnet-5-5', displayName: 'Sonnet 5.5' },
+            { value: 'haiku', resolvedModel: 'claude-haiku-5-5', displayName: 'Haiku 5.5' }
+        ]
+
+        it('shows versions on the choices and greys out what the machine lacks', () => {
+            const onModelChange = vi.fn()
+            renderComposer('claude', { model: null, availableModelOptions: undefined, claudeModels, onModelChange })
+            fireEvent.click(gear())
+            const group = screen.getByRole('group', { name: 'Model' })
+            expect(within(group).getByRole('button', { name: 'Default · Opus 5.5' }).getAttribute('aria-pressed')).toBe('true')
+            expect(within(group).getByRole('button', { name: 'Opus 5.5 1M' })).toBeTruthy()
+            const fable = within(group).getByRole('button', { name: 'Fable' }) as HTMLButtonElement
+            expect(fable.disabled).toBe(true)
+            fireEvent.click(fable)
+            expect(onModelChange).not.toHaveBeenCalled()
+            expect(within(group).getByText(
+                'Fable, Fable 1M: not offered by Claude Code on this machine; picking it runs Default · Opus 5.5.'
+            )).toBeTruthy()
+        })
+
+        it('notes the reported model only when it is not what the choice names', () => {
+            renderComposer('claude', { model: 'fable', availableModelOptions: undefined, claudeModels, resolvedModel: 'claude-opus-5-5' })
+            fireEvent.click(gear())
+            expect(within(screen.getByRole('group', { name: 'Model' })).getByText('Now: claude-opus-5-5')).toBeTruthy()
+            cleanup()
+            renderComposer('claude', { model: 'opus', availableModelOptions: undefined, claudeModels, resolvedModel: 'claude-opus-5-5' })
+            fireEvent.click(gear())
+            expect(within(screen.getByRole('group', { name: 'Model' })).queryByText(/^Now:/)).toBeNull()
+        })
+    })
+
     it('stays open after a pick so several settings change in one visit', () => {
         const onModelChange = vi.fn()
         const onEffortChange = vi.fn()

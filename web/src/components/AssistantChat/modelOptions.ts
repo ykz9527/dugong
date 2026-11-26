@@ -2,6 +2,7 @@ import { MODEL_OPTIONS } from '@/components/NewSession/types'
 import { CURSOR_AUTO_MODEL_LABEL } from '@/lib/cursorModelOptions'
 import { getClaudeComposerModelOptions, getNextClaudeComposerModel } from './claudeModelOptions'
 import type { ClaudeComposerModelOption } from './claudeModelOptions'
+import type { ClaudeModelSummary } from '@hapi/protocol/apiTypes'
 
 export type ModelOption = ClaudeComposerModelOption
 
@@ -43,12 +44,16 @@ function withCurrentModelOption(options: ModelOption[], currentModel?: string | 
     return nextOptions
 }
 
-function getClaudeModelOptions(currentModel?: string | null, customOptions?: ModelOption[]): ModelOption[] {
+function getClaudeModelOptions(
+    currentModel?: string | null,
+    customOptions?: ModelOption[],
+    claudeModels?: readonly ClaudeModelSummary[]
+): ModelOption[] {
     if (!customOptions || customOptions.length === 0) {
-        return getClaudeComposerModelOptions(currentModel)
+        return getClaudeComposerModelOptions(currentModel, claudeModels)
     }
 
-    const options = getClaudeComposerModelOptions(currentModel)
+    const options = getClaudeComposerModelOptions(currentModel, claudeModels)
     const nextOptions = [...options]
     let insertIndex = Math.max(1, nextOptions.findIndex((option) => option.value !== null))
 
@@ -104,13 +109,15 @@ function getNextGeminiModel(currentModel?: string | null): string | null {
 export function getModelOptionsForFlavor(
     flavor: string | undefined | null,
     currentModel?: string | null,
-    customOptions?: ModelOption[]
+    customOptions?: ModelOption[],
+    /** Claude Code's own model list on the session's machine (see `useClaudeModels`). */
+    claudeModels?: readonly ClaudeModelSummary[]
 ): ModelOption[] {
     if (flavor === 'agy') {
         return getAgyModelOptions(currentModel)
     }
     if (flavor === 'claude') {
-        return getClaudeModelOptions(currentModel, customOptions)
+        return getClaudeModelOptions(currentModel, customOptions, claudeModels)
     }
     if (customOptions && customOptions.length > 0) {
         if (flavor === 'cursor') {

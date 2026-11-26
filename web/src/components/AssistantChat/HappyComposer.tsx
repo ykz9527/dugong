@@ -40,6 +40,7 @@ import { applySuggestion } from '@/utils/applySuggestion'
 import { usePlatform } from '@/hooks/usePlatform'
 import { usePWAInstall } from '@/hooks/usePWAInstall'
 import { supportsEffort, supportsModelChange } from '@hapi/protocol'
+import type { ClaudeModelSummary } from '@hapi/protocol/apiTypes'
 import { markSkillUsed } from '@/lib/recent-skills'
 import { useComposerDraft } from '@/hooks/useComposerDraft'
 import type { AttachmentDraftInput } from '@/lib/composer-attachment-drafts'
@@ -219,7 +220,15 @@ export function SettingsGroup(props: { title: string; children: ReactNode; befor
     )
 }
 
-export type SettingsChoice<V> = { key: string; value: V; label: string; selected: boolean }
+export type SettingsChoice<V> = {
+    key: string
+    value: V
+    label: string
+    selected: boolean
+    /** Shown greyed and not pickable; `title` says why. */
+    unavailable?: boolean
+    title?: string
+}
 
 /**
  * Options as a wrapping row of pills, so every group of the sheet fits on
@@ -237,12 +246,13 @@ export function SettingsChoices<V>(props: {
                     key={option.key}
                     type="button"
                     aria-pressed={option.selected}
-                    disabled={props.disabled}
+                    disabled={props.disabled || option.unavailable}
+                    title={option.title}
                     className={`rounded-full border px-3 py-1 text-[13px] leading-5 transition-colors ${
                         option.selected
                             ? 'border-[var(--app-fg)] bg-[var(--app-fg)] text-[var(--app-bg)]'
                             : 'border-[var(--app-border)] text-[var(--app-fg)] hover:border-[var(--app-fg)]'
-                    } ${props.disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                    } ${props.disabled || option.unavailable ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
                     onClick={() => props.onPick(option.value)}
                     onMouseDown={(e) => e.preventDefault()}
                 >
@@ -324,6 +334,8 @@ export function HappyComposer(props: {
     model?: string | null
     /** What the agent reported the selected model resolved to (Claude: `claude-opus-5-5`). */
     resolvedModel?: string | null
+    /** Claude Code's own model list on the session's machine; names the Claude choices by version. */
+    claudeModels?: readonly ClaudeModelSummary[]
     modelReasoningEffort?: string | null
     effort?: string | null
     active?: boolean
@@ -440,6 +452,7 @@ export function HappyComposer(props: {
         copilotAgentMode: rawCopilotAgentMode,
         model: rawModel,
         resolvedModel,
+        claudeModels,
         modelReasoningEffort: rawModelReasoningEffort,
         effort: rawEffort,
         active = true,
@@ -1042,9 +1055,17 @@ export function HappyComposer(props: {
         [agentFlavor]
     )
     const modelOptions = useMemo(
-        () => getModelOptionsForFlavor(agentFlavor, model, availableModelOptions),
-        [agentFlavor, model, availableModelOptions]
+        () => getModelOptionsForFlavor(agentFlavor, model, availableModelOptions, claudeModels),
+        [agentFlavor, model, availableModelOptions, claudeModels]
     )
+    // What the selected choice's label already promises; the reported model is
+    // only worth a note when it says something else (or nothing is promised).
+    const selectedModelOption = modelOptions.find((option) => option.value === (model ?? null))
+    const resolvedModelNote = resolvedModel && selectedModelOption?.resolvedModel !== resolvedModel
+        ? resolvedModel
+        : null
+    const unavailableModelLabels = modelOptions.filter((option) => option.unavailable).map((option) => option.label)
+    const defaultModelLabel = modelOptions.find((option) => option.value === null)?.label ?? 'Default'
 
     // Cursor dual picker: after choosing a multi-variant base, drill into variant
     // rows in-place (picker stays open). Variant pick dismisses; back returns to
@@ -1678,7 +1699,7 @@ export function HappyComposer(props: {
                         {showModelSettings ? (
                             <SettingsGroup
                                 title={t('misc.model')}
-                                note={resolvedModel ? t('misc.modelResolved', { model: resolvedModel }) : null}
+                                note={resolvedModelNote ? t('misc.modelResolved', { model: resolvedModelNote }) : null}
                             >
                                 {agentFlavor === 'pi'
                                     ? piModelGroups?.map((group) => (
@@ -1705,6 +1726,10 @@ export function HappyComposer(props: {
                                                 key: option.value ?? 'auto',
                                                 value: option.value,
                                                 label: option.label,
+                                                unavailable: option.unavailable,
+                                                title: option.unavailable
+                                                    ? t('misc.modelUnavailable', { models: option.label, fallback: defaultModelLabel })
+                                                    : undefined,
                                                 selected: selectedModelBase !== undefined
                                                     ? selectedModelBase === option.value
                                                     : model === option.value
@@ -1719,6 +1744,14 @@ export function HappyComposer(props: {
                                             }}
                                         />
                                     )}
+                                {unavailableModelLabels.length > 0 ? (
+                                    <div className="pt-1.5 text-xs text-[var(--app-hint)]">
+                                        {t('misc.modelUnavailable', {
+                                            models: unavailableModelLabels.join(t('misc.listSeparator')),
+                                            fallback: defaultModelLabel
+                                        })}
+                                    </div>
+                                ) : null}
                             </SettingsGroup>
                         ) : null}
 
@@ -1881,7 +1914,9 @@ export function HappyComposer(props: {
     }, [
         showSettings,
         showSettingsButton,
-        resolvedModel,
+        resolvedModelNote,
+        unavailableModelLabels.join('\n'),
+        defaultModelLabel,
         permissionSwitchIsQueued,
         pendingRequestCount,
         activePermissionMode,

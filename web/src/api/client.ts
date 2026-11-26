@@ -35,6 +35,7 @@ import type {
 } from '@/types/api'
 import type {
     AgyModelsResponse,
+    ClaudeModelsResponse,
     CodexModelsResponse,
     CursorMigrateOutcome,
     CursorMigrateToAcpRequest,
@@ -1124,6 +1125,12 @@ export class ApiClient {
     async getMachinePiModels(machineId: string): Promise<PiModelsResponse> {
         return await this.request<PiModelsResponse>(
             `/api/machines/${encodeURIComponent(machineId)}/pi-models`
+        )
+    }
+
+    async getMachineClaudeModels(machineId: string): Promise<ClaudeModelsResponse> {
+        return await this.request<ClaudeModelsResponse>(
+            `/api/machines/${encodeURIComponent(machineId)}/claude-models`
         )
     }
 
