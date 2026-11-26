@@ -144,8 +144,8 @@ export async function startRunner(options: { workspaceRoots?: string[] } = {}): 
   //
   // In case the setup malfunctions - our signal handlers will not properly
   // shut down. We will force exit the process with code 1.
-  let requestShutdown: (source: 'hapi-app' | 'hapi-cli' | 'os-signal' | 'exception', errorMessage?: string) => void;
-  let resolvesWhenShutdownRequested = new Promise<({ source: 'hapi-app' | 'hapi-cli' | 'os-signal' | 'exception', errorMessage?: string })>((resolve) => {
+  let requestShutdown: (source: 'hapi-app' | 'hapi-cli' | 'os-signal' | 'exception' | 'upgrade', errorMessage?: string) => void;
+  let resolvesWhenShutdownRequested = new Promise<({ source: 'hapi-app' | 'hapi-cli' | 'os-signal' | 'exception' | 'upgrade', errorMessage?: string })>((resolve) => {
     requestShutdown = (source, errorMessage) => {
       logger.debug(`[RUNNER RUN] Requesting shutdown (source: ${source}, errorMessage: ${errorMessage})`);
 
@@ -1362,6 +1362,19 @@ export async function startRunner(options: { workspaceRoots?: string[] } = {}): 
           // above to start with `runner`, so we replay it directly.
           const handoffArgv = startedWithArgv;
 
+          // Under a supervisor, leave the restart to it. A detached
+          // replacement lives outside the systemd unit: the unit loses its
+          // main process, and every `start-sync` it launches from then on
+          // finds a runner already up and exits — a restart every
+          // RestartSec, for as long as the replacement lives (seen on a
+          // shared machine at 780 restarts and counting). Exiting puts the
+          // new binary back under the unit on its next start.
+          if (process.env.DUGONG_RUNNER_SUPERVISED === '1') {
+            logger.debug('[RUNNER RUN] CLI binary changed under a supervisor; exiting so it starts the new one');
+            requestShutdown('upgrade');
+            return;
+          }
+
           // On any failure path: reschedule the next handoff attempt for
           // HANDOFF_RETRY_BACKOFF_MS into the future. We deliberately do NOT
           // touch startedWithCliMtimeMs - the heartbeat must continue to
@@ -1477,7 +1490,7 @@ export async function startRunner(options: { workspaceRoots?: string[] } = {}): 
     }, heartbeatIntervalMs); // Every 60 seconds in production
 
     // Setup signal handlers
-    const cleanupAndShutdown = async (source: 'hapi-app' | 'hapi-cli' | 'os-signal' | 'exception', errorMessage?: string) => {
+    const cleanupAndShutdown = async (source: 'hapi-app' | 'hapi-cli' | 'os-signal' | 'exception' | 'upgrade', errorMessage?: string) => {
       logger.debug(`[RUNNER RUN] Starting proper cleanup (source: ${source}, errorMessage: ${errorMessage})...`);
 
       // Clear health check interval

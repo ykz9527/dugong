@@ -9,7 +9,7 @@ dugong doesn't install a service for you. Pick the service manager your system a
 - Run the runner with `dugong runner start-sync`. `dugong runner start` detaches and exits, and a service manager reads that as a crash.
 - Point the service at the real `dugong` binary. The npm package installs a small Node launcher that starts the binary and waits; if the service manager tracks the launcher, stopping the service leaves the runner behind, and the next start sees a runner already running and exits. Use a [release binary](https://github.com/ykz9527/dugong/releases), or the binary npm installed in the platform package: `$(npm root -g)/@ykz9527/dugong/node_modules/@ykz9527/dugong-linux-x64/bin/dugong` on 64-bit Linux (`dugong-darwin-arm64` on Apple silicon).
 - Services don't read your shell profile. Give them the `PATH` that finds `claude`, `codex` and `git`, and any proxy variables the agents need to reach their providers. Without them, agents fail to start and their tasks go to Blocked.
-- Set `DUGONG_RUNNER_SUPERVISED=1` on the runner. It tells the web app that a supervisor will start the runner again, so the Restart button can stop it safely.
+- Set `DUGONG_RUNNER_SUPERVISED=1` on the runner. It tells dugong that a supervisor will start the runner again: the web app's Restart button can then stop it safely, and when the `dugong` binary is replaced the runner exits and lets the supervisor start the new one. Without it, the runner hands over to a detached copy of itself, which runs outside the service; systemd then restarts the service every few seconds because each new start finds a runner already running.
 
 ### Linux: systemd
 

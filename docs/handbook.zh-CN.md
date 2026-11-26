@@ -330,6 +330,7 @@ After=dugong-hub.service
 
 [Service]
 EnvironmentFile=%h/.config/dugong.env
+Environment=DUGONG_RUNNER_SUPERVISED=1
 ExecStart=%h/.local/bin/dugong runner start-sync --workspace-root %h/code
 KillMode=process
 Restart=always
@@ -362,6 +363,8 @@ loginctl enable-linger $USER
 **2. runner 必须用 `start-sync`，不是 `start`。** `start` 会 daemonize 然后返回，systemd 看见主进程退出就当服务挂了。`start-sync` 是同一个东西的前台版本。
 
 **3. `ExecStart` 要指向真正的进程。** 如果你装的是 npm 版的命令，它是个 Node 壳，`execFileSync` 调真正的平台二进制然后干等着。systemd 记的 MainPID 是这个壳，`systemctl stop` 只杀壳，真 runner 活下来；下一次启动一看"已经有 runner 在跑"就退出 0，`Restart=always` 就变成每 5 秒一次的重启循环。用第 2 节那种 `exec` wrapper，或者直接指二进制。
+
+同样的重启循环还有一个来源：换了 `dugong` 二进制以后，runner 默认会起一个 detached 的新 runner 接班，新的那个不在服务的 MainPID 上。设 `DUGONG_RUNNER_SUPERVISED=1`，runner 换版本时就直接退出，交给 systemd 用新二进制重启。
 
 ### 为什么 runner 用 KillMode=process
 
