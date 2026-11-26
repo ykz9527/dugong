@@ -1,6 +1,6 @@
 import { readdirSync, statSync } from 'node:fs'
 import { open } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import type {
     ClaudeImportedMessage,
@@ -209,6 +209,10 @@ function isConversationRow(row: Record<string, unknown>): boolean {
 type SummaryFold = {
     sessionId: string | null
     cwd: string | null
+    /** Claude's directory name for the project the transcript is filed under. */
+    projectDirName: string
+    /** The latest cwd that project name stands for; see `summariseClaudeLocalSession`. */
+    projectCwd: string | null
     nativeTitle: string | null
     summaryTitle: string | null
     firstUserMessage: string | null
@@ -240,7 +244,10 @@ function foldSummaryLines(fold: SummaryFold, lines: readonly string[]): void {
         if (typeof type !== 'string') continue
 
         fold.sessionId ??= typeof row.sessionId === 'string' ? row.sessionId : null
-        fold.cwd ??= typeof row.cwd === 'string' ? row.cwd : null
+        if (typeof row.cwd === 'string') {
+            fold.cwd ??= row.cwd
+            if (encodeProjectDirName(row.cwd) === fold.projectDirName) fold.projectCwd = row.cwd
+        }
 
         if (type === 'ai-title') {
             // Claude re-titles as the conversation moves; the latest wins.
@@ -304,6 +311,8 @@ async function summariseClaudeLocalSession(
     const fold: SummaryFold = {
         sessionId: null,
         cwd: null,
+        projectDirName: basename(dirname(candidate.file)),
+        projectCwd: null,
         nativeTitle: null,
         summaryTitle: null,
         firstUserMessage: null,
@@ -320,6 +329,13 @@ async function summariseClaudeLocalSession(
     foldSummaryLines(fold, ends.tail)
 
     const resolvedId = fold.sessionId ?? sessionIdFromFile(candidate.file)
+    // Where the session lives is the project it is filed under — that is
+    // where `claude --resume` finds it — not wherever its first row ran. They
+    // differ for a session whose directory moved: one on a shared machine ran
+    // in /mnt/xc/lee until the data moved to /mnt/lee, was resumed from
+    // there, and kept /mnt/xc/lee in its first rows. Listed under the old
+    // path, it fell outside its owner's directories and never showed up.
+    fold.cwd = fold.projectCwd ?? fold.cwd
     // Only a real conversation is worth adopting: Claude answered, or a
     // person typed a prompt. Everything else is a shell — a terminal opened
     // and closed, or a program's SDK call that never got a reply (dugong's

@@ -290,4 +290,20 @@ describe('local Claude sessions', () => {
         expect(imported.messages).toHaveLength(2)
         expect(imported.title).toBe('Counting')
     })
+
+    it('places a session in the project it is filed under, not where it first ran', async () => {
+        // Reproduced on a shared machine: the data moved from /mnt/xc/lee to
+        // /mnt/lee and the session was resumed from there, so only its last
+        // rows name the directory it now lives in.
+        const root = useRoot()
+        writeTranscript(root, '-mnt-lee', 'sess-moved', [
+            { type: 'user', uuid: 'u1', sessionId: 'sess-moved', cwd: '/mnt/xc/lee', message: { role: 'user', content: 'refactor it' } },
+            { type: 'assistant', uuid: 'a1', sessionId: 'sess-moved', cwd: '/mnt/xc/lee/rag4code', message: { role: 'assistant', content: [{ type: 'text', text: 'done' }] } },
+            { type: 'user', uuid: 'u2', sessionId: 'sess-moved', cwd: '/mnt/lee', message: { role: 'user', content: 'where are we' } }
+        ])
+
+        const listed = await listLocalClaudeSessionSummaries(10, null, (session) => session.cwd === '/mnt/lee')
+
+        expect(listed.map((session) => [session.id, session.cwd])).toEqual([['sess-moved', '/mnt/lee']])
+    })
 })
