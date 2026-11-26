@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import type { Server } from 'socket.io'
 import type { RpcRegistry } from '../socket/rpcRegistry'
-import { RpcGateway, RpcTargetMissingError } from './rpcGateway'
+import { RpcGateway, RpcTargetMissingError, SideQuestionFailedError } from './rpcGateway'
 
 function createGateway() {
     const timeouts: number[] = []
@@ -156,5 +156,73 @@ describe('RpcGateway no-target diagnostics (tiann/hapi#916)', () => {
         const error = await gateway.killSession('session-1').catch((e: unknown) => e)
         expect(error).toBeInstanceOf(RpcTargetMissingError)
         expect((error as RpcTargetMissingError).code).toBe('socket-disconnected')
+    })
+})
+
+describe('RpcGateway /btw routing', () => {
+    function createSideQuestionGateway(opts: { runnerRegistered: boolean; reply: unknown; runnerReply?: unknown }) {
+        const calls: Array<{ method: string; params: unknown }> = []
+        const socket = {
+            timeout() {
+                return {
+                    async emitWithAck(_event: string, payload: { method: string; params: string }) {
+                        calls.push({ method: payload.method, params: JSON.parse(payload.params) as unknown })
+                        return JSON.stringify(payload.method.startsWith('machine-1:') && opts.runnerReply ? opts.runnerReply : opts.reply)
+                    }
+                }
+            }
+        }
+        const io = { of() { return { sockets: { get() { return socket } } } } } as unknown as Server
+        const rpcRegistry = {
+            getSocketIdForMethod(method: string) {
+                return method.startsWith('machine-1:') && !opts.runnerRegistered ? undefined : 'socket-1'
+            }
+        } as unknown as RpcRegistry
+        return { gateway: new RpcGateway(io, rpcRegistry), calls }
+    }
+
+    const session = {
+        id: 'session-1',
+        model: 'claude-opus-5-5',
+        metadata: { path: '/work/repo', machineId: 'machine-1', claudeSessionId: 'native-1' }
+    }
+
+    it('asks the runner, which runs the newest code, for the session\'s own fork', async () => {
+        const { gateway, calls } = createSideQuestionGateway({ runnerRegistered: true, reply: { answer: 'Half done.' } })
+
+        await expect(gateway.askSideQuestion(session, 'How far?')).resolves.toEqual({ answer: 'Half done.' })
+        expect(calls).toEqual([{
+            method: 'machine-1:side-question',
+            params: { question: 'How far?', nativeSessionId: 'native-1', cwd: '/work/repo', model: 'claude-opus-5-5' }
+        }])
+    })
+
+    it('falls back to the session process when the machine has no runner taking /btw', async () => {
+        const { gateway, calls } = createSideQuestionGateway({ runnerRegistered: false, reply: { answer: 'Half done.' } })
+
+        await expect(gateway.askSideQuestion(session, 'How far?')).resolves.toEqual({ answer: 'Half done.' })
+        expect(calls).toEqual([{ method: 'session-1:side-question', params: { question: 'How far?' } }])
+    })
+
+    it('asks the session itself when the runner may not fork in that directory', async () => {
+        const { gateway, calls } = createSideQuestionGateway({
+            runnerRegistered: true,
+            runnerReply: { error: 'Session directory is outside this machine\'s workspace roots', code: 'side_question_outside_roots' },
+            reply: { answer: 'Half done.' }
+        })
+
+        await expect(gateway.askSideQuestion(session, 'How far?')).resolves.toEqual({ answer: 'Half done.' })
+        expect(calls.map((call) => call.method)).toEqual(['machine-1:side-question', 'session-1:side-question'])
+    })
+
+    it('passes the runner\'s no-answer code on', async () => {
+        const { gateway } = createSideQuestionGateway({
+            runnerRegistered: true,
+            reply: { error: 'Claude returned no answer (error_max_turns, tool_use)', code: 'side_question_no_answer' }
+        })
+
+        const error = await gateway.askSideQuestion(session, 'How far?').catch((e: unknown) => e)
+        expect(error).toBeInstanceOf(SideQuestionFailedError)
+        expect((error as SideQuestionFailedError).code).toBe('side_question_no_answer')
     })
 })

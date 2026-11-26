@@ -1167,7 +1167,8 @@ export class SyncEngine {
     }
 
     async askSideQuestion(sessionId: string, question: string): Promise<{ answer: string }> {
-        return await this.rpcGateway.askSideQuestion(sessionId, question)
+        const session = this.getSession(sessionId)
+        return await this.rpcGateway.askSideQuestion(session ?? { id: sessionId, metadata: null }, question)
     }
 
     async abortSession(sessionId: string): Promise<void> {

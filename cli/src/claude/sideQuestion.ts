@@ -1,4 +1,4 @@
-import type { SideQuestionFailureCode } from '@hapi/protocol/apiTypes'
+import type { SideQuestionFailureCode, SideQuestionRpcResult } from '@hapi/protocol/apiTypes'
 import { query } from './sdk/query'
 import type { SDKUserMessage } from './sdk/types'
 import { filterCatalogAffectingClaudeArgs } from './sdk/metadataExtractor'
@@ -154,5 +154,19 @@ export async function askClaudeSideQuestion(opts: {
     } finally {
         clearTimeout(timeout)
         abortController.abort()
+    }
+}
+
+type SideQuestionOptions = Parameters<typeof askClaudeSideQuestion>[0]
+
+/** RPC form, shared by the session process and the runner: a fork with no answer comes back with a code. */
+export async function answerSideQuestionRpc(opts: SideQuestionOptions): Promise<SideQuestionRpcResult> {
+    try {
+        return { answer: await askClaudeSideQuestion(opts) }
+    } catch (error) {
+        if (error instanceof SideQuestionError) {
+            return { error: error.message, code: error.code }
+        }
+        throw error
     }
 }

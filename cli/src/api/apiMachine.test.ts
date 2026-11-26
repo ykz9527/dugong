@@ -8,6 +8,7 @@ const listOpencodeModelsForCwdMock = vi.hoisted(() => vi.fn())
 const listGrokModelsForCwdMock = vi.hoisted(() => vi.fn())
 const listCopilotModelsForCwdMock = vi.hoisted(() => vi.fn())
 const inspectCursorChatStoreMock = vi.hoisted(() => vi.fn())
+const answerSideQuestionRpcMock = vi.hoisted(() => vi.fn())
 
 vi.mock('socket.io-client', () => ({
     io: ioMock
@@ -31,6 +32,10 @@ vi.mock('../modules/common/copilotModels', () => ({
 
 vi.mock('@/cursor/cursorChatStoreStatus', () => ({
     inspectCursorChatStore: inspectCursorChatStoreMock
+}))
+
+vi.mock('@/claude/sideQuestion', () => ({
+    answerSideQuestionRpc: answerSideQuestionRpcMock
 }))
 
 import { ApiMachineClient, normalizeWindowsDriveRoot } from './apiMachine'
@@ -891,3 +896,62 @@ describe('ApiMachineClient connect runner-state advertisement', () => {
         }
     })
 })
+
+describe('ApiMachineClient side-question handler', () => {
+    let workspaceRoot: string
+
+    beforeEach(() => {
+        ioMock.mockReset()
+        answerSideQuestionRpcMock.mockReset()
+        workspaceRoot = mkdtempSync(join(tmpdir(), 'hapi-machine-btw-'))
+    })
+
+    afterEach(() => {
+        rmSync(workspaceRoot, { recursive: true, force: true })
+    })
+
+    async function ask(client: ApiMachineClient, machineId: string, params: unknown): Promise<unknown> {
+        const manager = (client as unknown as { rpcHandlerManager: { handleRequest: (req: { method: string; params: string }) => Promise<string> } }).rpcHandlerManager
+        return JSON.parse(await manager.handleRequest({ method: `${machineId}:side-question`, params: JSON.stringify(params) })) as unknown
+    }
+
+    it('answers from a fork of the named session in its own directory', async () => {
+        const machine = makeMachine('machine-btw-1')
+        const client = new ApiMachineClient('cli-token', machine, [workspaceRoot])
+        answerSideQuestionRpcMock.mockResolvedValueOnce({ answer: 'Half done.' })
+
+        try {
+            const result = await ask(client, machine.id, {
+                question: 'How far?',
+                nativeSessionId: 'native-1',
+                cwd: workspaceRoot,
+                model: 'claude-opus-5-5'
+            })
+            expect(result).toEqual({ answer: 'Half done.' })
+            expect(answerSideQuestionRpcMock).toHaveBeenCalledWith({
+                nativeSessionId: 'native-1',
+                question: 'How far?',
+                cwd: realpathSync(workspaceRoot),
+                model: 'claude-opus-5-5'
+            })
+        } finally {
+            client.shutdown()
+        }
+    })
+
+    it('refuses a directory outside the workspace roots', async () => {
+        const machine = makeMachine('machine-btw-2')
+        const client = new ApiMachineClient('cli-token', machine, [workspaceRoot])
+        const outside = mkdtempSync(join(tmpdir(), 'hapi-outside-'))
+
+        try {
+            const result = await ask(client, machine.id, { question: 'How far?', nativeSessionId: 'native-1', cwd: outside })
+            expect(result).toEqual({ error: 'Session directory is outside this machine\'s workspace roots', code: 'side_question_outside_roots' })
+            expect(answerSideQuestionRpcMock).not.toHaveBeenCalled()
+        } finally {
+            rmSync(outside, { recursive: true, force: true })
+            client.shutdown()
+        }
+    })
+})
+

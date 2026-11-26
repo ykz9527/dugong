@@ -5,7 +5,7 @@
 import { io, type Socket } from 'socket.io-client'
 import { mkdir, readdir, realpath, stat } from 'node:fs/promises'
 import { realpathSync } from 'node:fs'
-import { basename, dirname, isAbsolute, join, relative, resolve as resolvePath } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve as resolvePath, sep } from 'node:path'
 import { logger } from '@/ui/logger'
 import { configuration } from '@/configuration'
 import type { ClientToServerEvents, ServerToClientEvents, Update, UpdateMachineBody } from '@hapi/protocol'
@@ -60,7 +60,8 @@ import { buildSocketIoExtraHeaderOptions } from './hubExtraHeaders'
 import { collectMachineHealth } from '@/utils/machineHealth'
 import { inspectCursorChatStore } from '@/cursor/cursorChatStoreStatus'
 import { homedir } from 'node:os'
-import type { CursorChatStoreStatus } from '@hapi/protocol/apiTypes'
+import { SideQuestionMachineRequestSchema, type CursorChatStoreStatus, type SideQuestionRpcResult } from '@hapi/protocol/apiTypes'
+import { answerSideQuestionRpc } from '@/claude/sideQuestion'
 
 type MachineRpcHandlers = {
     spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>
@@ -168,6 +169,27 @@ export class ApiMachineClient {
             }))
 
             return { exists }
+        })
+
+        // /btw for any Claude session on this machine. The hub asks here
+        // first: this process is replaced on every deploy, a session process
+        // is not. Same directory gate as spawn (assistants live in the home dir).
+        this.rpcHandlerManager.registerHandler<unknown, SideQuestionRpcResult>(RPC_METHODS.SideQuestion, async (params) => {
+            const parsed = SideQuestionMachineRequestSchema.safeParse(params)
+            if (!parsed.success) {
+                throw new Error('Invalid side question')
+            }
+            const cwd = await this.resolveForWorkspaceCheck(parsed.data.cwd)
+            const assistantRoot = await this.resolveForWorkspaceCheck(join(configuration.happyHomeDir, 'assistant'))
+            if (!this.isWithinWorkspaceRoots(cwd) && !cwd.startsWith(assistantRoot + sep)) {
+                return { error: 'Session directory is outside this machine\'s workspace roots', code: 'side_question_outside_roots' }
+            }
+            return await answerSideQuestionRpc({
+                nativeSessionId: parsed.data.nativeSessionId,
+                question: parsed.data.question,
+                cwd,
+                model: parsed.data.model
+            })
         })
 
         this.rpcHandlerManager.registerHandler<CursorChatStoreStatusRequest, CursorChatStoreStatus>(

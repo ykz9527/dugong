@@ -733,6 +733,20 @@ export const SideQuestionRequestSchema = z.object({
 
 export type SideQuestionRequest = z.infer<typeof SideQuestionRequestSchema>
 
+/**
+ * Hub → runner: answer /btw from a fork run by the runner, not the session
+ * process. The runner is replaced on every deploy; a session process keeps
+ * the code it started with, so a fix to /btw would otherwise only reach
+ * sessions started after it.
+ */
+export const SideQuestionMachineRequestSchema = SideQuestionRequestSchema.extend({
+    nativeSessionId: z.string().min(1),
+    cwd: z.string().min(1),
+    model: z.string().min(1).optional()
+})
+
+export type SideQuestionMachineRequest = z.infer<typeof SideQuestionMachineRequestSchema>
+
 export type SideQuestionResponse = {
     answer: string
 }
@@ -740,8 +754,11 @@ export type SideQuestionResponse = {
 /** Why a /btw fork came back without an answer; the web shows a matching message. */
 export type SideQuestionFailureCode = 'side_question_no_answer' | 'side_question_timeout'
 
-/** CLI → hub RPC result for /btw. */
-export type SideQuestionRpcResult = SideQuestionResponse | { error: string; code: SideQuestionFailureCode }
+/** CLI → hub RPC result for /btw. `side_question_outside_roots` comes only from a
+ * runner that may not fork in that directory; the hub then asks the session itself. */
+export type SideQuestionRpcResult =
+    | SideQuestionResponse
+    | { error: string; code: SideQuestionFailureCode | 'side_question_outside_roots' }
 
 /** CLI → hub RPC result for native fork (before HAPI child binding). */
 export type ForkConversationRpcResult = {

@@ -7,7 +7,8 @@ import {
     ListCodexSessionsRpcResponseSchema,
     ListPiSessionsRpcResponseSchema,
     RemoveWorktreeResponseSchema,
-    type SideQuestionFailureCode
+    type SideQuestionFailureCode,
+    type SideQuestionMachineRequest
 } from '@hapi/protocol/apiTypes'
 import type {
     AgyModelsResponse,
@@ -80,13 +81,36 @@ export class RpcTargetMissingError extends Error {
 
 /** The CLI ran the /btw fork but got no answer; `code` says why, when known. */
 export class SideQuestionFailedError extends Error {
-    constructor(message: string, readonly code?: SideQuestionFailureCode) {
+    constructor(message: string, readonly code?: SideQuestionFailureCode | 'side_question_outside_roots') {
         super(message)
         this.name = 'SideQuestionFailedError'
     }
 }
 
-const SIDE_QUESTION_FAILURE_CODES: readonly string[] = ['side_question_no_answer', 'side_question_timeout'] satisfies SideQuestionFailureCode[]
+const SIDE_QUESTION_FAILURE_CODES: readonly string[] = ['side_question_no_answer', 'side_question_timeout', 'side_question_outside_roots'] satisfies NonNullable<SideQuestionFailedError['code']>[]
+const SIDE_QUESTION_RPC_TIMEOUT_MS = 180_000
+
+export type SideQuestionTarget = {
+    id: string
+    model?: string | null
+    metadata: { path: string; machineId?: string; claudeSessionId?: string } | null
+}
+
+function readSideQuestionResult(raw: unknown): { answer: string } {
+    const result = raw as { answer?: unknown; error?: unknown; code?: unknown } | null
+    // The CLI reports a failed handler as `{ error }`, plus a `code` when
+    // the fork ran but gave no answer; pass both on.
+    if (typeof result?.error === 'string' && result.error) {
+        const code = typeof result.code === 'string' && SIDE_QUESTION_FAILURE_CODES.includes(result.code)
+            ? result.code as SideQuestionFailedError['code']
+            : undefined
+        throw new SideQuestionFailedError(result.error, code)
+    }
+    if (typeof result?.answer !== 'string') {
+        throw new Error('Unexpected side question response')
+    }
+    return { answer: result.answer }
+}
 
 export type RpcCommandResponse = CommandResponse
 export type FileSearchOptions = {
@@ -571,25 +595,41 @@ export class RpcGateway {
         ) as import('@hapi/protocol/apiTypes').ForkConversationRpcResult
     }
 
-    async askSideQuestion(sessionId: string, question: string): Promise<{ answer: string }> {
-        const result = await this.sessionRpc(
-            sessionId,
+    /**
+     * Ask the session's runner first: it runs whatever code was deployed
+     * last, while a session process keeps the code it started with. Fall back
+     * to the session process when that machine has no runner taking /btw
+     * (offline, or a runner from before this route).
+     */
+    async askSideQuestion(session: SideQuestionTarget, question: string): Promise<{ answer: string }> {
+        const metadata = session.metadata
+        if (metadata?.machineId && metadata.claudeSessionId) {
+            try {
+                return readSideQuestionResult(await this.machineRpc(
+                    metadata.machineId,
+                    RPC_METHODS.SideQuestion,
+                    {
+                        question,
+                        nativeSessionId: metadata.claudeSessionId,
+                        cwd: metadata.path,
+                        ...(session.model ? { model: session.model } : {})
+                    } satisfies SideQuestionMachineRequest,
+                    SIDE_QUESTION_RPC_TIMEOUT_MS
+                ))
+            } catch (error) {
+                // No runner, or one that may not fork there (a session started
+                // outside its workspace roots): the session process can still answer.
+                const runnerCannotAnswer = error instanceof RpcTargetMissingError
+                    || (error instanceof SideQuestionFailedError && error.code === 'side_question_outside_roots')
+                if (!runnerCannotAnswer) throw error
+            }
+        }
+        return readSideQuestionResult(await this.sessionRpc(
+            session.id,
             RPC_METHODS.SideQuestion,
             { question },
-            180_000
-        ) as { answer?: unknown; error?: unknown; code?: unknown }
-        // The CLI reports a failed handler as `{ error }`, plus a `code` when
-        // the fork ran but gave no answer; pass both on.
-        if (typeof result?.error === 'string' && result.error) {
-            const code = typeof result.code === 'string' && SIDE_QUESTION_FAILURE_CODES.includes(result.code)
-                ? result.code as SideQuestionFailureCode
-                : undefined
-            throw new SideQuestionFailedError(result.error, code)
-        }
-        if (typeof result?.answer !== 'string') {
-            throw new Error('Unexpected side question response')
-        }
-        return { answer: result.answer }
+            SIDE_QUESTION_RPC_TIMEOUT_MS
+        ))
     }
 
     async rewindConversation(
