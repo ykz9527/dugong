@@ -242,14 +242,52 @@ describe('local Claude sessions', () => {
         expect(localIds).toEqual(rows.filter((row) => row.type !== 'ai-title').map((row) => `claude:sess-paged:${row.uuid}`))
     })
 
-    it('skips transcripts with nothing visible in them', async () => {
-        // Claude leaves a stub file behind for a session that never got a turn;
-        // adopting one would produce an empty card.
+    it('lists only transcripts with a real conversation in them', async () => {
         const root = useRoot()
-        writeTranscript(root, '-tmp-stub', 'sess-5', [
-            { type: 'user', uuid: 'u1', sessionId: 'sess-5', isMeta: true, cwd: '/tmp/stub', timestamp: '2026-09-01T10:00:00Z', message: { role: 'user', content: 'meta only' } }
+        // A terminal opened and closed: Claude Code 2.1's bookkeeping rows and
+        // a slash command, no turn. Reproduced from a shared machine, where it
+        // listed as "9 messages", imported as none and was titled after its
+        // directory.
+        writeTranscript(root, '-tmp-shell', 'sess-shell', [
+            { type: 'mode', sessionId: 'sess-shell', mode: 'default' },
+            { type: 'permission-mode', sessionId: 'sess-shell', permissionMode: 'auto' },
+            { type: 'session-owner', sessionId: 'sess-shell' },
+            { type: 'system', subtype: 'local_command', uuid: 's1', sessionId: 'sess-shell', cwd: '/tmp/shell', entrypoint: 'cli', content: '<command-name>/model</command-name>' },
+            { type: 'cost-state', sessionId: 'sess-shell' },
+            { type: 'last-prompt', sessionId: 'sess-shell' },
+            { type: 'attachment', uuid: 'at1', sessionId: 'sess-shell', attachment: {} }
+        ])
+        // dugong's startup probe: an SDK call with prompt "hello", aborted
+        // before Claude replied.
+        writeTranscript(root, '-tmp-probe', 'sess-probe', [
+            { type: 'user', uuid: 'u1', sessionId: 'sess-probe', cwd: '/tmp/probe', entrypoint: 'sdk-ts', message: { role: 'user', content: 'hello' } },
+            { type: 'attachment', uuid: 'at1', sessionId: 'sess-probe', entrypoint: 'sdk-ts', attachment: {} },
+            { type: 'api-request', sessionId: 'sess-probe' }
+        ])
+        // A person asked and quit before the answer: still theirs to pick up.
+        writeTranscript(root, '-tmp-asked', 'sess-asked', [
+            { type: 'user', uuid: 'u1', sessionId: 'sess-asked', cwd: '/tmp/asked', entrypoint: 'cli', message: { role: 'user', content: 'why is CI red' } }
         ])
 
-        expect(await listLocalClaudeSessionSummaries()).toEqual([])
+        expect((await listLocalClaudeSessionSummaries()).map((session) => session.id)).toEqual(['sess-asked'])
+    })
+
+    it('counts in the listing exactly the messages the import brings', async () => {
+        const root = useRoot()
+        writeTranscript(root, '-tmp-count', 'sess-count', [
+            { type: 'permission-mode', sessionId: 'sess-count', permissionMode: 'auto' },
+            { type: 'user', uuid: 'u1', sessionId: 'sess-count', cwd: '/tmp/count', message: { role: 'user', content: 'q' } },
+            { type: 'attachment', uuid: 'at1', sessionId: 'sess-count', attachment: {} },
+            { type: 'assistant', uuid: 'a1', sessionId: 'sess-count', message: { role: 'assistant', content: [{ type: 'text', text: 'a' }] } },
+            { type: 'tools-used', sessionId: 'sess-count' },
+            { type: 'ai-title', sessionId: 'sess-count', aiTitle: 'Counting' }
+        ])
+
+        const [listed] = await listLocalClaudeSessionSummaries()
+        const [imported] = await listLocalClaudeSessionsWithMessagesByIds(new Set(['sess-count']))
+
+        expect(listed.messageCount).toBe(2)
+        expect(imported.messages).toHaveLength(2)
+        expect(imported.title).toBe('Counting')
     })
 })

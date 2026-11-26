@@ -187,11 +187,24 @@ function toImportedMessage(
 }
 
 /**
- * Rows Claude Code writes for its own bookkeeping, never conversation.
- * Mirrors the live scanner's list; kept here so the summary path can skip
- * them without paying for a full schema parse.
+ * Whether a transcript row is a conversation row: one the import turns into
+ * a chat message.
+ *
+ * A whitelist on purpose. Claude Code keeps adding bookkeeping rows (`mode`,
+ * `permission-mode`, `session-owner`, `cost-state`, `attachment`,
+ * `api-request`, …) and each new one used to pass for a message, so a session
+ * that never had a turn listed as "9 messages" and imported as none. The
+ * listing and the import both ask this, so their counts agree by
+ * construction.
  */
-const INTERNAL_ROW_TYPES = new Set(['file-history-snapshot', 'change', 'queue-operation'])
+function isConversationRow(row: Record<string, unknown>): boolean {
+    const type = row.type
+    if (type !== 'user' && type !== 'assistant' && type !== 'system') return false
+    if (typeof row.uuid !== 'string') return false
+    if (type === 'user' && (typeof row.message !== 'object' || row.message === null)) return false
+    if (row.isMeta === true || row.isCompactSummary === true) return false
+    return isClaudeChatVisibleMessage(row as { type: unknown; subtype?: unknown })
+}
 
 type SummaryFold = {
     sessionId: string | null
@@ -201,6 +214,10 @@ type SummaryFold = {
     firstUserMessage: string | null
     lastUserMessage: string | null
     messageCount: number
+    /** Claude answered at least once. */
+    replied: boolean
+    /** Someone typed a prompt at a terminal (not a program driving the SDK). */
+    promptedByPerson: boolean
 }
 
 /**
@@ -220,7 +237,7 @@ function foldSummaryLines(fold: SummaryFold, lines: readonly string[]): void {
             continue
         }
         const type = row?.type
-        if (typeof type !== 'string' || INTERNAL_ROW_TYPES.has(type)) continue
+        if (typeof type !== 'string') continue
 
         fold.sessionId ??= typeof row.sessionId === 'string' ? row.sessionId : null
         fold.cwd ??= typeof row.cwd === 'string' ? row.cwd : null
@@ -234,15 +251,16 @@ function foldSummaryLines(fold: SummaryFold, lines: readonly string[]): void {
             if (typeof row.summary === 'string') fold.summaryTitle ??= row.summary
             continue
         }
-        if (row.isMeta === true || row.isCompactSummary === true) continue
-        if (!isClaudeChatVisibleMessage(row as { type: unknown; subtype?: unknown })) continue
+        if (!isConversationRow(row)) continue
 
         fold.messageCount += 1
+        if (type === 'assistant') fold.replied = true
         if (isExternalUserMessage(row as unknown as RawJSONLines)) {
             const text = extractRawUserTextContent((row.message as { content?: unknown })?.content)?.trim()
             if (text) {
                 fold.firstUserMessage ??= text
                 fold.lastUserMessage = text
+                if (row.entrypoint !== 'sdk-ts') fold.promptedByPerson = true
             }
         }
     }
@@ -290,7 +308,9 @@ async function summariseClaudeLocalSession(
         summaryTitle: null,
         firstUserMessage: null,
         lastUserMessage: null,
-        messageCount: 0
+        messageCount: 0,
+        replied: false,
+        promptedByPerson: false
     }
     foldSummaryLines(fold, ends.head)
     // "Last prompt" means last in the file. A long agent turn can push it out
@@ -300,10 +320,13 @@ async function summariseClaudeLocalSession(
     foldSummaryLines(fold, ends.tail)
 
     const resolvedId = fold.sessionId ?? sessionIdFromFile(candidate.file)
-    // A whole transcript with nothing visible in it is a stub Claude left
-    // behind (a session that never got a turn); adopting one gives an empty
-    // card. A partial read proves nothing either way, so it is kept.
-    const summary: ClaudeLocalSessionSummary | null = !resolvedId || (ends.whole && fold.messageCount === 0)
+    // Only a real conversation is worth adopting: Claude answered, or a
+    // person typed a prompt. Everything else is a shell — a terminal opened
+    // and closed, or a program's SDK call that never got a reply (dugong's
+    // own startup probe used to leave one per session, prompt "hello"). A
+    // partial read proves nothing either way, so a long transcript is kept.
+    const conversation = fold.replied || fold.promptedByPerson
+    const summary: ClaudeLocalSessionSummary | null = !resolvedId || (ends.whole && !conversation)
         ? null
         : {
             id: resolvedId,
@@ -435,11 +458,9 @@ async function readClaudeTranscriptPage(
                 const index = eventIndex
                 eventIndex += 1
 
-                // Claude Code's own title events are metadata, never chat rows —
-                // the live launcher routes them to the session title too.
-                if (event.type === 'ai-title' || event.type === 'summary') continue
-                if (event.isMeta || event.isCompactSummary) continue
-                if (!isClaudeChatVisibleMessage(event)) continue
+                // Title events are metadata (the live launcher routes them to
+                // the session title); the listing counts exactly these rows.
+                if (!isConversationRow(event as unknown as Record<string, unknown>)) continue
 
                 const message = toImportedMessage(event, sessionId, index, modifiedAt)
                 const stored = { ...message, content: truncateOversizedMessageContent(message.content) as ClaudeImportedMessage['content'] }
