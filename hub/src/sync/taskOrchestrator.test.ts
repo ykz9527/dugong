@@ -141,6 +141,71 @@ describe('adopted tasks', () => {
         expect(store.tasks.get(task.id)?.currentSessionId).toBe('sess-1')
     })
 
+    describe('when the hub can reopen sessions', () => {
+        let reopenCalls: string[]
+        let reopenImpl: (sessionId: string) => Promise<SpawnTaskSessionResult>
+        let reopening: TaskOrchestrator
+
+        beforeEach(() => {
+            reopenCalls = []
+            reopenImpl = async (sessionId) => ({ type: 'success', sessionId: `resumed-${sessionId}` })
+            reopening = new TaskOrchestrator({
+                store,
+                getSession: (id) => sessions.get(id) ?? null,
+                spawnSession: async (input) => {
+                    spawnCalls.push(input)
+                    return await spawnImpl(input)
+                },
+                sendMessage: async (sessionId, text) => { sentMessages.push({ sessionId, text }) },
+                reopenSession: async (sessionId) => {
+                    reopenCalls.push(sessionId)
+                    return await reopenImpl(sessionId)
+                },
+                stopSession: async (machineId, sessionId) => {
+                    stopCalls.push({ machineId, sessionId })
+                    return 'stopped'
+                },
+                subscribe: () => () => {},
+                reattachWindowMs: 0,
+                logger: { error: () => {} }
+            })
+        })
+        afterEach(() => reopening.stop())
+
+        it('runs again in the session that holds the history', async () => {
+            // Reproduced live: a re-run spawned a fresh session, which stays
+            // empty until someone types (an adopted start sends nothing), so
+            // the card opened on a blank chat with the history elsewhere.
+            seedSession('import-row', { active: false })
+            seedSession('resumed-import-row')
+            seedSession('empty-run')
+            const task = makeTask({ spawn: adoptedSpawn('native-abc') })
+            store.tasks.startRun({ taskId: task.id, namespace: 'default', origin: 'user', sessionId: 'empty-run' })
+            store.tasks.finishRun(store.tasks.getActiveRun(task.id)!.id, { status: 'succeeded', column: 'review' })
+
+            const result = await reopening.startTask(task.id, 'default')
+
+            expect(result).toMatchObject({ outcome: 'started', sessionId: 'resumed-import-row' })
+            expect(reopenCalls).toEqual(['import-row'])
+            expect(spawnCalls).toEqual([])
+            expect(sentMessages).toEqual([])
+            // The blank session the old start left is not kept alongside.
+            expect(stopCalls).toEqual([{ machineId: 'box-1', sessionId: 'empty-run' }])
+            expect(store.tasks.get(task.id)?.currentSessionId).toBe('resumed-import-row')
+        })
+
+        it('falls back to a fresh session resuming the native id', async () => {
+            reopenImpl = async () => ({ type: 'error', message: 'machine offline' })
+            const task = makeTask({ spawn: adoptedSpawn('native-abc') })
+
+            const result = await reopening.startTask(task.id, 'default')
+
+            expect(result.outcome).toBe('started')
+            expect(spawnCalls[0].resumeSessionId).toBe('native-abc')
+            expect(store.tasks.listRuns(task.id)).toHaveLength(1)
+        })
+    })
+
     it('still delivers the prompt for an ordinary card', async () => {
         const task = makeTask()
 

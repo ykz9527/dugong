@@ -604,6 +604,25 @@ export class TaskOrchestrator {
             }
         }
 
+        // An adopted task runs on in the conversation it was taken over from,
+        // in the hub session that holds its history. Spawning a fresh session
+        // instead (as starts once did) gave an empty chat: the agent only
+        // resumes the native conversation on its first message, and an adopted
+        // start sends none — the operator saw nothing of the history.
+        const historySessionId = parsedSpawn.data.adoptedSessionId ?? task.currentSessionId
+        if ((parsedSpawn.data.adoptedSessionId || parsedSpawn.data.adoptedNativeSessionId) && historySessionId) {
+            if (task.currentSessionId && task.currentSessionId !== historySessionId) {
+                await this.retireSession(task)
+            }
+            const continued = await this.continueTask(task.id, namespace, {
+                origin: options?.origin ?? 'user',
+                sessionId: historySessionId
+            })
+            // Could not come back (transcript gone, machine offline): fall
+            // through to a fresh session that resumes by native id.
+            if (continued.outcome !== 'unavailable') return continued
+        }
+
         // A previous run may have left a session behind — most often after a hub
         // restart, where the sweep settles the run but cannot reach the agent.
         // Retiring it here keeps one task to one live session.
@@ -710,7 +729,9 @@ export class TaskOrchestrator {
     }
 
     /**
-     * Run a task again inside its last conversation.
+     * Run a task again inside a conversation it already has: its last one, or
+     * `sessionId`. Without `prompt` the agent is only brought back, not told
+     * anything (an adopted task's start).
      *
      * The session is reopened before a run is opened: if it cannot come back
      * (transcript gone, machine changed) the caller starts fresh and no failed
@@ -721,21 +742,26 @@ export class TaskOrchestrator {
     async continueTask(
         taskId: string,
         namespace: string,
-        options: { origin: 'scheduled'; prompt: string }
+        options: {
+            origin: 'user' | 'followup' | 'reconcile' | 'scheduled'
+            prompt?: string
+            sessionId?: string
+        }
     ): Promise<ContinueTaskResult> {
         const store = this.deps.store
         const task = store.tasks.getByNamespace(taskId, namespace)
         if (!task) return { outcome: 'task-not-found' }
         if (task.archivedAt !== null) return { outcome: 'archived', task }
         if (store.tasks.getActiveRun(task.id)) return { outcome: 'already-running', task }
-        if (!task.currentSessionId) return { outcome: 'unavailable', message: 'no previous session' }
+        const sessionId = options.sessionId ?? task.currentSessionId
+        if (!sessionId) return { outcome: 'unavailable', message: 'no previous session' }
         if (!this.deps.reopenSession) return { outcome: 'unavailable', message: 'reopen not supported' }
         const [previousRun] = store.tasks.listRuns(task.id, 1)
 
         let reopened: SpawnTaskSessionResult
         this.spawnsInFlight += 1
         try {
-            reopened = await this.deps.reopenSession(task.currentSessionId, namespace)
+            reopened = await this.deps.reopenSession(sessionId, namespace)
         } catch (error) {
             reopened = { type: 'error', message: error instanceof Error ? error.message : String(error) }
         } finally {
@@ -767,17 +793,19 @@ export class TaskOrchestrator {
 
         await this.waitForSessionAttached(reopened.sessionId)
         await this.nameSession(reopened.sessionId, store.tasks.get(task.id)?.title ?? task.title)
-        try {
-            await this.deps.sendMessage(reopened.sessionId, options.prompt)
-        } catch (error) {
-            const message = error instanceof Error ? error.message : String(error)
-            const settled = store.tasks.finishRun(started.run.id, {
-                status: 'failed',
-                error: encodeTaskError('run.promptUndelivered', message),
-                column: 'blocked'
-            })
-            if (settled.outcome === 'finished') this.publishTask(settled.task)
-            return { outcome: 'prompt-failed', task, message }
+        if (options.prompt !== undefined) {
+            try {
+                await this.deps.sendMessage(reopened.sessionId, options.prompt)
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error)
+                const settled = store.tasks.finishRun(started.run.id, {
+                    status: 'failed',
+                    error: encodeTaskError('run.promptUndelivered', message),
+                    column: 'blocked'
+                })
+                if (settled.outcome === 'finished') this.publishTask(settled.task)
+                return { outcome: 'prompt-failed', task, message }
+            }
         }
 
         const synced = this.syncColumnFromSession(reopened.sessionId)

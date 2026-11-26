@@ -72,10 +72,10 @@ export const TaskSpawnConfigSchema = z.object({
      * The agent's own session id for an adopted task — what gets handed to
      * `claude --resume` or `codex resume`.
      *
-     * Kept separately from `adoptedSessionId` because a start does not reuse
-     * the import row: every start of an adopted task opens a new HAPI session
-     * that continues the same native conversation. The import row keeps the
-     * history; the native id is the thread.
+     * A start reopens the HAPI session holding the history
+     * (`adoptedSessionId`, which follows merges), so the chat shows the whole
+     * conversation. Only when that session cannot come back does a start
+     * open a new HAPI session resuming this native id.
      */
     adoptedNativeSessionId: z.string().min(1).optional()
 })
