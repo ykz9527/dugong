@@ -82,3 +82,28 @@ describe('Claude options named from Claude Code\'s model list', () => {
         expect(getClaudeComposerModelOptions(null, fullIdsOnly).some((option) => option.unavailable)).toBe(false)
     })
 })
+
+describe('Claude options with an older Claude Code list (2.1.323 on 37.2, no availableModels)', () => {
+    const catalog = [
+        { value: 'default', resolvedModel: 'claude-opus-5-5', displayName: 'Default (recommended)' },
+        { value: 'opus', resolvedModel: 'claude-opus-5-5', displayName: 'Opus' },
+        { value: 'claude-fable-5-1[1m]', resolvedModel: 'claude-fable-5-1', displayName: 'Fable' },
+        { value: 'sonnet', resolvedModel: 'claude-sonnet-5-5', displayName: 'Sonnet' },
+        { value: 'haiku', resolvedModel: 'claude-haiku-5-5', displayName: 'Haiku' }
+    ]
+
+    it('takes the version from the id when the name has none, and keeps Fable pickable without guessing its version', () => {
+        const labels = getClaudeComposerModelOptions(null, catalog).map((option) => [option.label, option.unavailable ?? false])
+        expect(labels).toEqual([
+            ['Default · Opus 5.5', false],
+            ['Sonnet 5.5', false],
+            ['Sonnet 5.5 1M', false],
+            ['Opus 5.5', false],
+            ['Opus 5.5 1M', false],
+            // `--model fable` runs claude-fable-5-2 there; the list only names 5.1.
+            ['Fable', false],
+            ['Fable 1M', false],
+            ['Haiku 5.5', false],
+        ])
+    })
+})
