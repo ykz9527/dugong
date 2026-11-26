@@ -41,7 +41,8 @@ describe('getModelOptionsForFlavor', () => {
             { value: 'opus', label: 'Opus' },
             { value: 'opus[1m]', label: 'Opus 1M' },
             { value: 'fable', label: 'Fable' },
-            { value: 'fable[1m]', label: 'Fable 1M' }
+            { value: 'fable[1m]', label: 'Fable 1M' },
+            { value: 'haiku', label: 'Haiku' }
         ])
     })
 
@@ -57,7 +58,8 @@ describe('getModelOptionsForFlavor', () => {
             { value: 'opus', label: 'Opus' },
             { value: 'opus[1m]', label: 'Opus 1M' },
             { value: 'fable', label: 'Fable' },
-            { value: 'fable[1m]', label: 'Fable 1M' }
+            { value: 'fable[1m]', label: 'Fable 1M' },
+            { value: 'haiku', label: 'Haiku' }
         ])
     })
 

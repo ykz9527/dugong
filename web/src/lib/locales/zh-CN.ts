@@ -1108,6 +1108,7 @@ export default {
   'misc.copilotAgentMode': '代理模式',
   'misc.permissionMode': '权限模式',
   'misc.model': '模型',
+  'misc.modelResolved': '当前：{model}',
   'misc.permissions': '权限',
   'composer.permission.queued': '智能体有 {count} 个待回答的请求。回答后、下一轮开始时此模式才生效。',
   'composer.permission.queuedNextTurn': '本轮仍按「{active}」运行，「{mode}」从下一轮生效。',

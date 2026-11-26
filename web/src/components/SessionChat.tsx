@@ -116,6 +116,7 @@ import { useCompactTerminalControls } from '@/hooks/useCompactTerminalControls'
 import { queueShellCommand } from '@/lib/shellTerminal'
 import { VoiceBackendSession, registerSessionStore, registerVoiceHooksStore, voiceHooks } from '@/realtime'
 import { isRemoteTerminalSupported } from '@/utils/terminalSupport'
+import { getClaudeResolvedModel } from '@/components/AssistantChat/claudeModelOptions'
 
 // xterm (~430 KB) loads with the first terminal shown, not with every chat.
 const AgentTerminalView = lazy(() => import('@/components/AgentTerminal/AgentTerminalView')
@@ -2025,6 +2026,7 @@ function SessionChatInner(props: SessionChatProps) {
                         collaborationMode={codexCollaborationModeSupported ? props.session.collaborationMode : undefined}
                         copilotAgentMode={agentFlavor === 'copilot' ? props.session.copilotAgentMode : undefined}
                         model={props.session.model}
+                        resolvedModel={getClaudeResolvedModel(props.session.metadata, props.session.model)}
                         modelReasoningEffort={agentFlavor === 'codex' || agentFlavor === 'opencode' ? props.session.modelReasoningEffort : undefined}
                         effort={props.session.effort}
                         agentFlavor={agentFlavor}

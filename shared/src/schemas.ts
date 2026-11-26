@@ -160,6 +160,11 @@ export const MetadataSchema = z.object({
     // the provider so web can resolve the exact model when two providers
     // share a modelId.
     piSelectedModel: z.object({ provider: z.string(), modelId: z.string() }).nullable().optional(),
+    // Claude: the model Claude Code resolved the session's selection to, as
+    // its system/init reported it (e.g. alias `opus` -> `claude-opus-5-5`).
+    // `selected` is the alias that turn ran with (null = Default), so the web
+    // shows `model` only while it still answers the current selection.
+    claudeResolvedModel: z.object({ selected: z.string().nullable(), model: z.string() }).optional(),
     // Task assistant: this session is a workspace
     // user's one permanent assistant, not a task's agent. The board never
     // adopts it, and notifications go to `workspaceUserId` rather than to

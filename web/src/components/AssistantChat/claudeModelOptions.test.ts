@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getClaudeComposerModelOptions, getNextClaudeComposerModel } from './claudeModelOptions'
+import { getClaudeComposerModelOptions, getClaudeResolvedModel, getNextClaudeComposerModel } from './claudeModelOptions'
 
 describe('getClaudeComposerModelOptions', () => {
     it('includes the active non-preset Claude model in the options list', () => {
@@ -12,6 +12,7 @@ describe('getClaudeComposerModelOptions', () => {
             { value: 'opus[1m]', label: 'Opus 1M' },
             { value: 'fable', label: 'Fable' },
             { value: 'fable[1m]', label: 'Fable 1M' },
+            { value: 'haiku', label: 'Haiku' },
         ])
     })
 
@@ -24,6 +25,7 @@ describe('getClaudeComposerModelOptions', () => {
             { value: 'opus[1m]', label: 'Opus 1M' },
             { value: 'fable', label: 'Fable' },
             { value: 'fable[1m]', label: 'Fable 1M' },
+            { value: 'haiku', label: 'Haiku' },
         ])
     })
 })
@@ -31,5 +33,20 @@ describe('getClaudeComposerModelOptions', () => {
 describe('getNextClaudeComposerModel', () => {
     it('cycles from a non-preset Claude model to the next selectable model instead of auto', () => {
         expect(getNextClaudeComposerModel('claude-opus-4-1-20250805')).toBe('sonnet')
+    })
+})
+
+describe('getClaudeResolvedModel', () => {
+    const metadata = { claudeResolvedModel: { selected: null, model: 'claude-opus-5-5' } }
+
+    it('answers the selection it was reported for; Default matches null and "default"', () => {
+        expect(getClaudeResolvedModel(metadata, null)).toBe('claude-opus-5-5')
+        expect(getClaudeResolvedModel(metadata, 'default')).toBe('claude-opus-5-5')
+    })
+
+    it('stays empty for another selection or before any report', () => {
+        expect(getClaudeResolvedModel(metadata, 'sonnet')).toBeNull()
+        expect(getClaudeResolvedModel({}, null)).toBeNull()
+        expect(getClaudeResolvedModel(null, null)).toBeNull()
     })
 })

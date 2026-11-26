@@ -172,6 +172,17 @@ describe('HappyComposer session settings sheet', () => {
         expect(isSelected('High')).toBe(true)
     })
 
+    it.each([
+        ['claude-opus-5-5', 'Now: claude-opus-5-5'],
+        [null, null]
+    ])('notes the resolved model beside the model title only when reported (%s)', (resolvedModel, note) => {
+        renderComposer('claude', { resolvedModel })
+        fireEvent.click(gear())
+        const group = screen.getByRole('group', { name: 'Model' })
+        if (note) expect(within(group).getByText(note)).toBeTruthy()
+        else expect(within(group).queryByText(/^Now:/)).toBeNull()
+    })
+
     it('stays open after a pick so several settings change in one visit', () => {
         const onModelChange = vi.fn()
         const onEffortChange = vi.fn()

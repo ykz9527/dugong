@@ -1,4 +1,5 @@
 import { CLAUDE_MODEL_PRESETS, getClaudeModelLabel } from '@hapi/protocol'
+import type { Metadata } from '@hapi/protocol/schemas'
 
 export type ClaudeComposerModelOption = {
     value: string | null
@@ -48,4 +49,18 @@ export function getNextClaudeComposerModel(currentModel?: string | null): string
     }
 
     return options[(currentIndex + 1) % options.length]?.value ?? null
+}
+
+/**
+ * The model Claude Code actually runs for the current selection, as it
+ * reported it. Null when it has not reported one for this selection yet (a
+ * new session, or a switch whose first turn has not started): never guessed.
+ */
+export function getClaudeResolvedModel(
+    metadata: Pick<Metadata, 'claudeResolvedModel'> | null | undefined,
+    currentModel?: string | null
+): string | null {
+    const resolved = metadata?.claudeResolvedModel
+    if (!resolved) return null
+    return resolved.selected === normalizeClaudeComposerModel(currentModel) ? resolved.model : null
 }

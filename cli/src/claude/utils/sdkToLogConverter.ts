@@ -151,6 +151,11 @@ export class SDKToLogConverter {
         this.context.selectedModel = model ?? null
     }
 
+    /** The model selection the current turn was started with. */
+    getSelectedModel(): string | null {
+        return this.context.selectedModel ?? null
+    }
+
     /**
      * Update session ID (for when session changes during resume)
      */

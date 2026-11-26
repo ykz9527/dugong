@@ -8,6 +8,7 @@ import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "./sdk";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
+import { reportClaudeResolvedModel } from "./model";
 import { PLAN_FAKE_REJECT } from "./sdk/prompts";
 import { EnhancedMode } from "./loop";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
@@ -166,6 +167,13 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         function onMessage(message: SDKMessage) {
             formatClaudeMessageForInk(message, messageBuffer);
             permissionHandler.onMessage(message);
+
+            // Every turn's process reports what its selection resolved to;
+            // the selection is the one this turn started with (a model switch
+            // starts a new process, see the mode-hash gate below).
+            if (message.type === 'system' && message.subtype === 'init') {
+                reportClaudeResolvedModel(session.client, sdkToLogConverter.getSelectedModel(), message.model);
+            }
 
             if (message.type === 'assistant') {
                 let umessage = message as SDKAssistantMessage;

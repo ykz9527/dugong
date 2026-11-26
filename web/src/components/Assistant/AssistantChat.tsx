@@ -28,6 +28,7 @@ import { getCodexModelReasoningEfforts } from '@/lib/codexModelCapabilities'
 import { isQueuedForInvocation } from '@/lib/messages'
 import { useTranslation } from '@/lib/use-translation'
 import type { AttachmentMetadata, Session } from '@/types/api'
+import { getClaudeResolvedModel } from '@/components/AssistantChat/claudeModelOptions'
 
 /**
  * The assistant's conversation inside its panel.
@@ -463,6 +464,7 @@ function LoadedThread(props: {
                     permissionMode={session.permissionMode}
                     activePermissionMode={session.activePermissionMode}
                     model={session.model}
+                    resolvedModel={getClaudeResolvedModel(session.metadata, session.model)}
                     effort={session.effort}
                     modelReasoningEffort={isCodex ? session.modelReasoningEffort : undefined}
                     availableModelOptions={codexModelOptions}

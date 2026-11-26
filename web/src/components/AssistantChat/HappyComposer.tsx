@@ -204,13 +204,16 @@ function settingsSheetMaxHeight(): number {
 }
 
 /** One titled group in the session settings sheet. */
-export function SettingsGroup(props: { title: string; children: ReactNode; before?: ReactNode }) {
+export function SettingsGroup(props: { title: string; children: ReactNode; before?: ReactNode; note?: ReactNode }) {
     // Several groups offer a choice with the same name ("Default" model and
     // "Default" permission mode); the group label tells them apart.
     return (
         <div role="group" aria-label={props.title} className="px-3 py-2.5">
             {props.before}
-            <div className="pb-1.5 text-xs font-semibold text-[var(--app-hint)]">{props.title}</div>
+            <div className="flex items-baseline gap-2 pb-1.5 text-xs">
+                <span className="font-semibold text-[var(--app-hint)]">{props.title}</span>
+                {props.note ? <span className="min-w-0 truncate text-[var(--app-hint)]">{props.note}</span> : null}
+            </div>
             {props.children}
         </div>
     )
@@ -319,6 +322,8 @@ export function HappyComposer(props: {
     collaborationMode?: CodexCollaborationMode
     copilotAgentMode?: CopilotAgentMode
     model?: string | null
+    /** What the agent reported the selected model resolved to (Claude: `claude-opus-5-5`). */
+    resolvedModel?: string | null
     modelReasoningEffort?: string | null
     effort?: string | null
     active?: boolean
@@ -434,6 +439,7 @@ export function HappyComposer(props: {
         collaborationMode: rawCollaborationMode,
         copilotAgentMode: rawCopilotAgentMode,
         model: rawModel,
+        resolvedModel,
         modelReasoningEffort: rawModelReasoningEffort,
         effort: rawEffort,
         active = true,
@@ -1670,7 +1676,10 @@ export function HappyComposer(props: {
                     <FloatingOverlay maxHeight={settingsSheetMaxHeight()}>
                         <div className="divide-y divide-[var(--app-border)]" data-testid="session-settings-sheet">
                         {showModelSettings ? (
-                            <SettingsGroup title={t('misc.model')}>
+                            <SettingsGroup
+                                title={t('misc.model')}
+                                note={resolvedModel ? t('misc.modelResolved', { model: resolvedModel }) : null}
+                            >
                                 {agentFlavor === 'pi'
                                     ? piModelGroups?.map((group) => (
                                         <div key={group.provider} className="pb-1.5 last:pb-0">
@@ -1872,6 +1881,7 @@ export function HappyComposer(props: {
     }, [
         showSettings,
         showSettingsButton,
+        resolvedModel,
         permissionSwitchIsQueued,
         pendingRequestCount,
         activePermissionMode,

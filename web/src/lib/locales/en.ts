@@ -1104,6 +1104,7 @@ export default {
   'misc.copilotAgentMode': 'Agent Mode',
   'misc.permissionMode': 'Permission Mode',
   'misc.model': 'Model',
+  'misc.modelResolved': 'Now: {model}',
   'misc.permissions': 'Permissions',
   'composer.permission.queued': 'The agent has {count} open request(s). This mode applies once they are answered and the next turn starts.',
   'composer.permission.queuedNextTurn': 'This turn runs under {active}. {mode} applies from the next turn.',
