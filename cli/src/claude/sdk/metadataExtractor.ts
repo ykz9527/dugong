@@ -91,7 +91,10 @@ export async function extractSDKMetadata(options: {
             prompt: 'hello',
             options: {
                 cwd: options.cwd,
-                additionalArgs: filterCatalogAffectingClaudeArgs(options.claudeArgs),
+                // The probe is not a conversation: without this, every
+                // session start left a "hello" transcript behind in
+                // ~/.claude/projects, and those cluttered the adopt picker.
+                additionalArgs: [...filterCatalogAffectingClaudeArgs(options.claudeArgs), '--no-session-persistence'],
                 allowedTools: ['Bash(echo)'],
                 maxTurns: 1,
                 abort: abortController.signal

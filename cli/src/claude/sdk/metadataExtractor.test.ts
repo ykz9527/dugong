@@ -1,8 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
     classifyClaudeSlashCatalog,
+    extractSDKMetadata,
     filterCatalogAffectingClaudeArgs
 } from './metadataExtractor'
+
+const queryMock = vi.hoisted(() => vi.fn())
+vi.mock('./query', () => ({ query: queryMock }))
 
 describe('Claude skill catalog', () => {
     const discoveredSkills = [
@@ -42,4 +46,17 @@ describe('Claude skill catalog', () => {
         ])
     })
 
+})
+
+describe('extractSDKMetadata', () => {
+    it('probes without leaving a transcript behind', async () => {
+        queryMock.mockImplementation(async function* () {
+            yield { type: 'system', subtype: 'init', tools: ['Bash'], slash_commands: ['review'] }
+        })
+
+        const metadata = await extractSDKMetadata({ claudeArgs: ['--add-dir', '/x'] })
+
+        expect(metadata.tools).toEqual(['Bash'])
+        expect(queryMock.mock.calls[0][0].options.additionalArgs).toEqual(['--add-dir', '/x', '--no-session-persistence'])
+    })
 })
