@@ -14,6 +14,7 @@ import {
     type TaskSpawnConfig
 } from '@hapi/protocol'
 import type { Store, StoredTask } from '../store'
+import { shouldRecordSessionActivity } from './sessionActivity'
 
 /**
  * Task orchestration: turns session signals into column moves.
@@ -444,6 +445,11 @@ export class TaskOrchestrator {
     /** Sessions known to belong to a task, so the per-event adoption check stops
      *  asking the store once the answer can no longer change. */
     private readonly boardSessionIds = new Set<string>()
+    /** When each session last received a message a person sent (web, the
+     *  assistant, Telegram, or typed in the terminal), as seen by this hub
+     *  process. In memory on purpose: after a restart nothing has been sent
+     *  yet, so a reconnecting session cannot pass for a new turn. */
+    private readonly lastHumanMessageAt = new Map<string, number>()
 
     constructor(deps: TaskOrchestratorDeps) {
         this.deps = deps
@@ -968,10 +974,23 @@ export class TaskOrchestrator {
                 this.syncWorktreeFromSession(event.sessionId)
                 this.syncColumnFromSession(event.sessionId)
                 return
+            case 'message-received':
+                // Only a person's message can reopen a card in `done`; the
+                // agent's own output and injected notices never do.
+                if (!shouldRecordSessionActivity(event.message.content)) return
+                this.lastHumanMessageAt.set(
+                    event.sessionId,
+                    Math.max(this.lastHumanMessageAt.get(event.sessionId) ?? 0, event.message.createdAt)
+                )
+                // The terminal's message can arrive after the keep-alive that
+                // already reported `thinking`, so check again here.
+                this.syncColumnFromSession(event.sessionId)
+                return
             case 'session-ended':
                 this.settleRunForSession(event.sessionId, event.reason)
                 return
             case 'session-removed':
+                this.lastHumanMessageAt.delete(event.sessionId)
                 // A merged session is not a lost one: the store has already
                 // moved the task onto the surviving id, so the task is
                 // republished rather than orphaned.
@@ -1010,14 +1029,21 @@ export class TaskOrchestrator {
     /**
      * Re-derive the column of the task that owns `sessionId`.
      *
-     * Only tasks in `running`, `blocked` or `review` are touched; `backlog`,
-     * `ready` and `done` belong to the operator and are never corrected here.
+     * Tasks in `running`, `blocked` or `review` follow the session. `backlog`
+     * and `ready` belong to the operator and are never corrected here. `done`
+     * moves for one thing only: a new turn — see `startsNewTurnFromDone`.
      */
     private syncColumnFromSession(sessionId: string): StoredTask | null {
         const store = this.deps.store
         const resolved = this.resolveTaskForSession(sessionId)
         if (!resolved) return null
         const { task } = resolved
+        if (task.column === 'done') {
+            if (!this.startsNewTurnFromDone(task, sessionId)) return null
+            const moved = store.tasks.move(task.id, task.namespace, 'running')
+            this.publishTask(moved)
+            return moved
+        }
         // `review` is included: a task in review goes back to `running` when
         // work resumes on it, and a follow-up turn in the same session is
         // exactly that.
@@ -1074,6 +1100,25 @@ export class TaskOrchestrator {
         const moved = store.tasks.move(task.id, task.namespace, column)
         this.publishTask(moved)
         return moved
+    }
+
+    /**
+     * Whether a card in `done` has new work: someone sent its session a message
+     * after the card was marked done, and the agent is working on it.
+     *
+     * `thinking` alone is not enough, and leaning on it was the old bug: a
+     * reconnect after a hub restart, a turn that was still finishing when the
+     * card was marked done, and an agent woken by a finished background task
+     * all report `thinking` without anyone asking for anything. The message
+     * has to be newer than the card's last update, which is never earlier than
+     * the move to `done`; messages from before a hub restart are not known at
+     * all (see `lastHumanMessageAt`).
+     */
+    private startsNewTurnFromDone(task: StoredTask, sessionId: string): boolean {
+        const session = this.deps.getSession(sessionId)
+        if (!session?.active || !session.thinking) return false
+        const sentAt = this.lastHumanMessageAt.get(sessionId)
+        return sentAt !== undefined && sentAt > task.updatedAt
     }
 
     private settleRunForSession(sessionId: string, reason: SessionEndReason | undefined): void {

@@ -959,6 +959,151 @@ describe('session events', () => {
         expect(store.tasks.get(task.id)?.column).toBe('done')
     })
 
+    describe('a card in done', () => {
+        /** A message a person sent, `offsetMs` from the moment the card was
+         *  marked done (negative: before it). */
+        function humanMessage(taskId: string, offsetMs: number): SyncEvent {
+            const doneAt = store.tasks.get(taskId)!.updatedAt
+            return {
+                type: 'message-received',
+                sessionId: 'sess-1',
+                message: {
+                    id: `m-${offsetMs}`, seq: null, localId: null,
+                    content: { role: 'user', content: { type: 'text', text: '再改一下' } },
+                    createdAt: doneAt + offsetMs
+                }
+            }
+        }
+
+        /** Marked done with its run still open, as a Claude session that
+         *  lives on after its turn leaves it; the run is past its startup
+         *  window. */
+        async function doneTask(): Promise<StoredTask> {
+            const task = await startedTask()
+            const run = store.tasks.getActiveRun(task.id)!
+            const db = (store as unknown as { db: { prepare: (sql: string) => { run: (...args: unknown[]) => void } } }).db
+            db.prepare('UPDATE task_runs SET started_at = ? WHERE id = ?').run(Date.now() - 120_000, run.id)
+            store.tasks.move(task.id, 'default', 'done')
+            return task
+        }
+
+        it('goes back to running when a new message starts a turn, then to review when it ends', async () => {
+            const task = await doneTask()
+
+            emit(humanMessage(task.id, 1000))
+            sessions.set('sess-1', { id: 'sess-1', namespace: 'default', active: true, thinking: true })
+            emit({ type: 'session-updated', sessionId: 'sess-1' })
+            expect(store.tasks.get(task.id)?.column).toBe('running')
+
+            sessions.set('sess-1', { id: 'sess-1', namespace: 'default', active: true, thinking: false })
+            emit({ type: 'session-updated', sessionId: 'sess-1' })
+            expect(store.tasks.get(task.id)?.column).toBe('review')
+        })
+
+        it('goes back to running when the message lands after the agent already reports thinking', async () => {
+            // A message typed in the terminal reaches the hub through the
+            // transcript scanner, often after the keep-alive that says thinking.
+            const task = await doneTask()
+
+            sessions.set('sess-1', { id: 'sess-1', namespace: 'default', active: true, thinking: true })
+            emit({ type: 'session-updated', sessionId: 'sess-1' })
+            expect(store.tasks.get(task.id)?.column).toBe('done')
+
+            emit(humanMessage(task.id, 1000))
+            expect(store.tasks.get(task.id)?.column).toBe('running')
+        })
+
+        it('waits for the turn: a message to an idle session does not move it yet', async () => {
+            const task = await doneTask()
+            sessions.set('sess-1', { id: 'sess-1', namespace: 'default', active: true, thinking: false })
+
+            emit(humanMessage(task.id, 1000))
+            expect(store.tasks.get(task.id)?.column).toBe('done')
+        })
+
+        it('stays done while the turn from before it was marked done finishes', async () => {
+            const task = await doneTask()
+            emit(humanMessage(task.id, -1000))
+
+            sessions.set('sess-1', { id: 'sess-1', namespace: 'default', active: true, thinking: true })
+            emit({ type: 'session-updated', sessionId: 'sess-1' })
+            sessions.set('sess-1', {
+                id: 'sess-1', namespace: 'default', active: true, thinking: false,
+                backgroundTaskCount: 1, backgroundAgentCount: 1
+            })
+            emit({ type: 'session-updated', sessionId: 'sess-1' })
+            sessions.set('sess-1', { id: 'sess-1', namespace: 'default', active: true, thinking: false })
+            emit({ type: 'session-updated', sessionId: 'sess-1' })
+
+            expect(store.tasks.get(task.id)?.column).toBe('done')
+        })
+
+        it('stays done when a reconnect or heartbeat reports thinking with no new message', async () => {
+            const task = await doneTask()
+
+            sessions.set('sess-1', { id: 'sess-1', namespace: 'default', active: false })
+            emit({ type: 'session-updated', sessionId: 'sess-1' })
+            sessions.set('sess-1', { id: 'sess-1', namespace: 'default', active: true, thinking: true })
+            emit({ type: 'session-updated', sessionId: 'sess-1' })
+            emit({ type: 'session-updated', sessionId: 'sess-1' })
+
+            expect(store.tasks.get(task.id)?.column).toBe('done')
+        })
+
+        it('stays done when a finished background task wakes the agent', async () => {
+            // Claude Code injects the notice as a user line; the CLI forwards
+            // it as agent output, so it is not a person's message.
+            const task = await doneTask()
+            const doneAt = store.tasks.get(task.id)!.updatedAt
+            emit({
+                type: 'message-received',
+                sessionId: 'sess-1',
+                message: {
+                    id: 'm-notice', seq: null, localId: null,
+                    content: {
+                        role: 'agent',
+                        content: { type: 'output', data: { type: 'user', message: { content: '<task-notification>done</task-notification>' } } }
+                    },
+                    createdAt: doneAt + 1000
+                }
+            })
+            sessions.set('sess-1', { id: 'sess-1', namespace: 'default', active: true, thinking: true })
+            emit({ type: 'session-updated', sessionId: 'sess-1' })
+
+            expect(store.tasks.get(task.id)?.column).toBe('done')
+        })
+
+        it('stays done after a hub or runner restart while the session picks up where it was', async () => {
+            const task = await doneTask()
+            emit(humanMessage(task.id, -1000))
+            orchestrator.stop()
+
+            orchestrator = new TaskOrchestrator({
+                store,
+                getSession: (id) => sessions.get(id) ?? null,
+                spawnSession: async () => ({ type: 'error', message: 'unused' }),
+                sendMessage: async () => {},
+                subscribe: (listener) => {
+                    listeners.push(listener)
+                    return () => {
+                        listeners = listeners.filter((entry) => entry !== listener)
+                    }
+                },
+                reattachWindowMs: 0,
+                logger: { error: () => {} }
+            })
+            orchestrator.start()
+
+            // The agent reconnects mid-turn, and history it already had is
+            // replayed with its original timestamps.
+            sessions.set('sess-1', { id: 'sess-1', namespace: 'default', active: true, thinking: true })
+            emit({ type: 'session-updated', sessionId: 'sess-1' })
+            emit(humanMessage(task.id, -500))
+
+            expect(store.tasks.get(task.id)?.column).toBe('done')
+        })
+    })
+
     it('does not declare a just-spawned run interrupted', async () => {
         // Regression: a session row starts inactive and only flips when the CLI
         // reports in. Without the startup guard, linking the run immediately
