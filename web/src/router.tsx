@@ -232,14 +232,6 @@ function SessionsPage() {
         && Date.now() - firstUse >= STAR_INVITE_AFTER_MS
     const sidebarActions = (
         <div className="flex shrink-0 items-center gap-1">
-            {/* The sidebar can be as narrow as 300px: the pill where it
-                fits, a plain icon where that fits, else nothing here
-                (Settings → About still has it). */}
-            <GitHubStarButton api={api} onClick={starInvite.dismiss} className="hidden @[380px]/sidebar:flex" />
-            <GitHubStarIcon
-                onClick={starInvite.dismiss}
-                className="p-1 rounded-full text-[var(--app-hint)] hover:text-[var(--app-fg)] hover:bg-[var(--app-subtle-bg)] transition-colors hidden @[320px]/sidebar:inline-flex @[380px]/sidebar:hidden"
-            />
             {canBrowse && (
                 <button
                     type="button"
@@ -250,6 +242,14 @@ function SessionsPage() {
                     <FolderOpenIcon className="h-5 w-5" />
                 </button>
             )}
+            {/* The sidebar can be as narrow as 300px: the pill where it
+                fits, a plain icon where that fits, else nothing here
+                (Settings → About still has it). */}
+            <GitHubStarButton api={api} onClick={starInvite.dismiss} className="hidden @[380px]/sidebar:flex" />
+            <GitHubStarIcon
+                onClick={starInvite.dismiss}
+                className="p-1 rounded-full text-[var(--app-hint)] hover:text-[var(--app-fg)] hover:bg-[var(--app-subtle-bg)] transition-colors hidden @[320px]/sidebar:inline-flex @[380px]/sidebar:hidden"
+            />
             {/* The phone's list has the floating button instead. */}
             {split ? <AssistantHeaderButton className={sidebarToggleClass} iconClassName="h-5 w-5" /> : null}
             <button
