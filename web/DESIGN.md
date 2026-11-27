@@ -131,6 +131,8 @@ Two CSS rules (both bit us once):
 | Lifecycle ruler | Backlog→Done baseline with ticks, red fill/marker at current step; blocked = red label under Running | "A month on the books" | `Tasks/TaskDetail.tsx` `LifecycleRuler` |
 | Field | 12px/600 label above, no box, 1px bottom border, 17px text | `.m-field` | `LoginPrompt.tsx` |
 | Assistant icon | speech bubble (no sparkles anywhere) | — | `Assistant/icons.tsx` |
+| Star button | 1px black pill `☆ Star │ n`, `.pw-ghost-sweep`; star outline draws in, fills red on hover; count rolls up once; no count when the hub can't reach GitHub | GitHub-stars buttons (ReUI, shadcn.io) | `GitHubStar.tsx` |
+| Star invite | under the sidebar header once, a week after the first task: black top rule draws in, red 12px label, black pill + grey text button; either retires it | Docusaurus announcement bar | `GitHubStar.tsx` `StarInvite` |
 
 ## 7. Layout
 
@@ -183,3 +185,4 @@ Two CSS rules (both bit us once):
 | Share | `/share` | Done 2026-11-11 (ledger picker, pills). |
 | Banners (offline, reconnecting, syncing, PWA, runner skew, cursor migration) | global | Done 2026-11-11. Black or grey strips, amber text for warnings, no fills. |
 | Composer session settings | `/sessions/$id` | 2026-11-24 (owner's decision). The gear sheet is the one entry for model, effort, permission and the Codex/Copilot extras, on desktop and phone; it stays open across picks. Options are pill rows (selected = black fill) under 12px/600 group labels on hairlines. Removed: the separate model / effort / permission buttons beside the gear (and their toolbar-layout entries). 2026-11-26 (owner asked for versions on the choices): Claude pills take Claude Code's own names from the machine ("Default · Opus 5.5", "Opus 5.5 1M"); an alias the machine does not offer is a greyed, unpickable pill, explained in one hint-grey line under the group. The group label's hint-grey "当前：claude-opus-5-5" note appears only when the model the agent reported is not the one the selected pill names. |
+| Star on GitHub | `/sessions` sidebar | 2026-11-27 (owner picked from a live demo). Star pill with the hub-cached count in the header and in Settings → About; one-time invite above the task list a week after the first task. Removed: none. |

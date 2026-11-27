@@ -1037,6 +1037,10 @@ export class ApiClient {
         return await this.request<SqliteStorageUsageResponse>('/api/storage/sqlite')
     }
 
+    async getGithubStars(): Promise<{ stars: number | null }> {
+        return await this.request<{ stars: number | null }>('/api/github-stars')
+    }
+
     async getHubSettings(): Promise<HubSettingsResponse> {
         return await this.request<HubSettingsResponse>('/api/hub-settings')
     }

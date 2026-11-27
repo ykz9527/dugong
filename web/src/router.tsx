@@ -18,6 +18,8 @@ import { getScrollRestorationKey } from '@/lib/scrollRestorationKey'
 import { PRESERVE_SESSION_SIDEBAR_SCROLL } from '@/lib/sessionNavigation'
 import { App } from '@/App'
 import { SidebarHeader } from '@/components/SidebarHeader'
+import { GitHubStarButton, STAR_INVITE_AFTER_MS, StarInvite, firstUseAt } from '@/components/GitHubStar'
+import { useFue } from '@/lib/use-fue'
 import { TaskSwitcher, countAttentionTasks } from '@/components/Tasks/TaskSwitcher'
 import { useNewTaskDialog } from '@/components/Tasks/useNewTaskDialog'
 import { LoadingState } from '@/components/LoadingState'
@@ -222,8 +224,15 @@ function SessionsPage() {
     const newTask = useNewTaskDialog(api)
     const { tasks: sidebarTasks } = useTasks(api, { includeArchived: true })
     const split = useIsSplitLayout()
+    // Clicking either the star button or the invite retires the invite.
+    const starInvite = useFue('github-star-invite')
+    const firstUse = firstUseAt(sidebarTasks)
+    const showStarInvite = starInvite.status !== 'acknowledged'
+        && firstUse !== null
+        && Date.now() - firstUse >= STAR_INVITE_AFTER_MS
     const sidebarActions = (
         <div className="flex shrink-0 items-center gap-1">
+            <GitHubStarButton api={api} onClick={starInvite.dismiss} />
             {canBrowse && (
                 <button
                     type="button"
@@ -273,6 +282,7 @@ function SessionsPage() {
                         attentionCount={countAttentionTasks(sidebarTasks)}
                         actions={sidebarActions}
                     />
+                    {showStarInvite ? <StarInvite onDismiss={starInvite.dismiss} /> : null}
                     <TaskSwitcher api={api} selectedSessionId={selectedSessionId} />
                 </div>
             </div>

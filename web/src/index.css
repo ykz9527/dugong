@@ -1006,6 +1006,7 @@ html {
 
 @keyframes pw-rule-x { from { transform: scaleX(0); } }
 @keyframes pw-rule-y { from { transform: scaleY(0); } }
+@keyframes pw-star-draw { from { stroke-dashoffset: 64; } }
 @keyframes pw-post { from { opacity: 0; transform: translateX(var(--post-from, -36px)); } }
 
 @layer components {
@@ -1026,6 +1027,24 @@ html {
     .pw-post-in {
         animation: pw-post 0.9s var(--ease-post) backwards;
         animation-delay: calc(min(var(--i, 0), 14) * 60ms);
+    }
+
+    /* Star button: the outline draws itself in; hover fills the star red. */
+    .pw-star-pill polygon {
+        fill: transparent;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linejoin: round;
+        stroke-dasharray: 64;
+        animation: pw-star-draw 1.1s var(--ease-rule) backwards;
+        transition: fill var(--dur-fast) var(--ease), stroke var(--dur-fast) var(--ease);
+    }
+
+    @media (hover: hover) {
+        .pw-star-pill:hover polygon {
+            fill: var(--app-accent);
+            stroke: var(--app-accent);
+        }
     }
 
     /*
