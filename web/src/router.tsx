@@ -18,7 +18,7 @@ import { getScrollRestorationKey } from '@/lib/scrollRestorationKey'
 import { PRESERVE_SESSION_SIDEBAR_SCROLL } from '@/lib/sessionNavigation'
 import { App } from '@/App'
 import { SidebarHeader } from '@/components/SidebarHeader'
-import { GitHubStarButton, STAR_INVITE_AFTER_MS, StarInvite, firstUseAt } from '@/components/GitHubStar'
+import { GitHubStarButton, GitHubStarIcon, STAR_INVITE_AFTER_MS, StarInvite, firstUseAt } from '@/components/GitHubStar'
 import { useFue } from '@/lib/use-fue'
 import { TaskSwitcher, countAttentionTasks } from '@/components/Tasks/TaskSwitcher'
 import { useNewTaskDialog } from '@/components/Tasks/useNewTaskDialog'
@@ -232,7 +232,14 @@ function SessionsPage() {
         && Date.now() - firstUse >= STAR_INVITE_AFTER_MS
     const sidebarActions = (
         <div className="flex shrink-0 items-center gap-1">
-            <GitHubStarButton api={api} onClick={starInvite.dismiss} />
+            {/* The sidebar can be as narrow as 300px: the pill where it
+                fits, a plain icon where that fits, else nothing here
+                (Settings → About still has it). */}
+            <GitHubStarButton api={api} onClick={starInvite.dismiss} className="hidden @[380px]/sidebar:flex" />
+            <GitHubStarIcon
+                onClick={starInvite.dismiss}
+                className="p-1 rounded-full text-[var(--app-hint)] hover:text-[var(--app-fg)] hover:bg-[var(--app-subtle-bg)] transition-colors hidden @[320px]/sidebar:inline-flex @[380px]/sidebar:hidden"
+            />
             {canBrowse && (
                 <button
                     type="button"

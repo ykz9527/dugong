@@ -16,7 +16,7 @@ export function SidebarHeader(props: {
     const { t } = useTranslation()
 
     return (
-        <div className="flex items-center gap-2 px-3 pb-1 pt-3">
+        <div className="@container/sidebar flex items-center gap-2 px-3 pb-1 pt-3">
             <DugongMark />
             {/* One line whatever the sidebar width: the actions give way first.
                 No negative tracking — it crowds CJK titles. */}

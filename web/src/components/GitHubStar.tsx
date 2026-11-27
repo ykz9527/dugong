@@ -13,7 +13,7 @@ export const STAR_INVITE_AFTER_MS = 7 * 24 * 60 * 60 * 1000
  * The star button in the sidebar header: `☆ Star │ 128`. The count comes from
  * the hub (which asks GitHub); without one the button is just `☆ Star`.
  */
-export function GitHubStarButton(props: { api: ApiClient | null; onClick?: () => void }) {
+export function GitHubStarButton(props: { api: ApiClient | null; onClick?: () => void; className?: string }) {
     const { t } = useTranslation()
     const { data } = useQuery({
         queryKey: queryKeys.githubStars,
@@ -30,7 +30,7 @@ export function GitHubStarButton(props: { api: ApiClient | null; onClick?: () =>
             target="_blank"
             rel="noopener noreferrer"
             onClick={props.onClick}
-            className="pw-ghost-sweep pw-star-pill flex h-[26px] shrink-0 items-stretch rounded-full border border-[var(--app-fg)] text-xs font-semibold"
+            className={`pw-ghost-sweep pw-star-pill h-[26px] shrink-0 items-stretch rounded-full border border-[var(--app-fg)] text-xs font-semibold ${props.className ?? 'flex'}`}
             title={t('sidebar.starOnGithub')}
         >
             <span className="flex items-center gap-1.5 px-2">
@@ -42,6 +42,28 @@ export function GitHubStarButton(props: { api: ApiClient | null; onClick?: () =>
                     <CountUp value={stars} />
                 </span>
             ) : null}
+        </a>
+    )
+}
+
+/**
+ * The star as a plain header icon, for a sidebar too narrow for the pill.
+ */
+export function GitHubStarIcon(props: { onClick?: () => void; className?: string }) {
+    const { t } = useTranslation()
+    return (
+        <a
+            href={DUGONG_REPO_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={props.onClick}
+            className={props.className}
+            title={t('sidebar.starOnGithub')}
+            aria-label={t('sidebar.starOnGithub')}
+        >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true" className="h-5 w-5">
+                <polygon points={STAR_POINTS} />
+            </svg>
         </a>
     )
 }
@@ -90,11 +112,13 @@ export function firstUseAt(tasks: ReadonlyArray<{ createdAt: number }>): number 
     return first
 }
 
+const STAR_POINTS = '12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2'
+
 function StarGlyph() {
     return (
         <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 shrink-0">
             <polygon
-                points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
+                points={STAR_POINTS}
                 pathLength={64}
             />
         </svg>
