@@ -12,7 +12,7 @@ dugong runs ten agent CLIs. Each must be installed and logged in on the machine 
 | Kimi | `dugong kimi` | ACP (`kimi acp`) | yes | `default` `read-only` `safe-yolo` `yolo` |
 | OpenCode | `dugong opencode` | ACP (`opencode acp`) | yes | `default` `plan` `yolo` |
 | Pi | `dugong pi` | `pi --mode rpc` | no | none; Pi approves everything |
-| Antigravity | `dugong agy` | `agy -p` once per turn | no | `request-review` `always-proceed` |
+| Antigravity | `dugong agy` | ACP (`agy acp`) | no | `request-review` `always-proceed` |
 | DeepSeek Harness | `dugong dsh` | ACP (`dsh-acp-demo` or a server you configure) | no | set by the DSH composition |
 
 "Terminal mode" means you can also run the agent in your own terminal through dugong and switch between terminal and browser. The others only run under the web app. Gemini CLI was removed after Google stopped serving it; `dugong gemini` prints an error, and old Gemini sessions stay readable.
@@ -78,7 +78,7 @@ Runs as `pi --mode rpc`. From the web chat, `/compact`, `/session`, `/model` and
 
 ### Antigravity
 
-Each turn runs `agy -p` headless and streams its events into the chat. Permissions come from agy's own allow and deny rules in its `settings.json` (`request-review`) or are skipped (`always-proceed`); a tool call without an allow rule is denied by agy and shown in the chat. MCP servers come from agy's own config.
+Runs as `agy acp`. In `request-review`, a tool call that agy's own rules don't already allow shows up as a permission card, the same as with the other ACP agents. Allow it once, or allow it for the rest of the session, and the turn carries on. agy has no "always" option of its own, so dugong remembers session approvals itself and never writes them to agy's `settings.json`. `always-proceed` approves every request. agy decides what to ask from its own `settings.json`: if `toolPermission` there is `always-proceed`, agy asks nothing, even under `request-review`. Sessions started under the earlier `agy -p` transport resume in the same conversation. MCP servers come from agy's own config.
 
 ### DeepSeek Harness
 

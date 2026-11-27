@@ -29,8 +29,7 @@ export async function runAgy(opts: {
 
     logger.debug(`[agy] Starting with options: startedBy=${startedBy}, startingMode=${opts.startingMode}`);
 
-    // agy is headless-only: the web is the primary surface, so sessions always
-    // start in remote mode (no PTY, no local TUI mode).
+    // agy is remote-only (ACP): sessions always start in remote mode.
     const startingMode: 'local' | 'remote' = opts.startingMode ?? 'remote';
 
     const initialState: AgentState = {
@@ -108,18 +107,7 @@ export async function runAgy(opts: {
             messageQueue.push(formattedText, mode, localId);
         });
 
-        session.onCancelQueuedMessage((localId) => {
-            // A batch held in the driver's retry backoff is outside MessageQueue2;
-            // the driver-owned cancel handles it (returns true when removed).
-            const retryRemoved = sessionWrapperRef.current?.cancelRetryDelivery?.(localId) ?? false;
-            if (retryRemoved) {
-                logger.debug(`[agy] cancelByLocalId(${localId}): removed from retry backoff`);
-                return true;
-            }
-            const removed = messageQueue.cancelByLocalId(localId);
-            logger.debug(`[agy] cancelByLocalId(${localId}): ${removed ? 'removed' : 'not found'}`);
-            return removed;
-        });
+        session.onCancelQueuedMessage((localId) => messageQueue.cancelByLocalId(localId));
 
         registerSessionConfigRpc<PermissionMode>({
             rpcHandlerManager: session.rpcHandlerManager,

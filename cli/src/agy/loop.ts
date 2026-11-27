@@ -2,7 +2,7 @@ import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { logger } from '@/ui/logger';
 import { runLocalRemoteSession } from '@/agent/loopBase';
 import { AgySession } from './session';
-import { agyHeadlessDriver } from './headless/agyHeadlessDriver';
+import { agyRemoteLauncher } from './agyRemoteLauncher';
 import { ApiClient, ApiSessionClient } from '@/lib';
 import type { AgyMode, PermissionMode } from './types';
 import type { SessionEffort, SessionModel } from '@/api/types';
@@ -43,9 +43,8 @@ export async function agyLoop(opts: AgyLoopOptions): Promise<void> {
         effort: opts.effort,
     });
 
-    // On resume, immediately persist the brain UUID into metadata so
+    // On resume, persist the conversation id into metadata right away so
     // inactiveSessionCanResume returns true from the first reconnect.
-    // Mirrors geminiLoop's session.onSessionFound(resumeSessionId) pattern.
     if (opts.resumeSessionId) {
         session.onSessionFound(opts.resumeSessionId);
     }
@@ -58,7 +57,7 @@ export async function agyLoop(opts: AgyLoopOptions): Promise<void> {
             logger.debug('[agy-loop] Local mode not supported; switching to remote');
             return 'switch';
         },
-        runRemote: agyHeadlessDriver,
+        runRemote: agyRemoteLauncher,
         onSessionReady: opts.onSessionReady
     });
 }

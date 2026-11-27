@@ -46,9 +46,18 @@ function mapDecisionToOutcome(
     return optionId ? { outcome: 'selected', optionId } : { outcome: 'cancelled' }
 }
 
+/** Identity of a request for "allow for this session": same kind and same
+ *  derived name (ACP titles carry the command line or the target path). */
+function sessionApprovalKey(request: PermissionRequest, toolName: string): string {
+    return `${request.kind ?? ''}\u0000${toolName}`
+}
+
 /** Shared HAPI permission bridge for ACP agents with one-shot choices. */
 export class AcpPermissionHandler extends BasePermissionHandler<PermissionResponseMessage, void> {
     private readonly pendingBackendRequests = new Map<string, PermissionRequest>()
+    /** "Allow for session" grants HAPI keeps itself, for agents (such as agy)
+     *  that offer no `allow_always` option of their own. */
+    private readonly sessionApprovals = new Set<string>()
 
     constructor(
         session: ApiSessionClient,
@@ -70,7 +79,7 @@ export class AcpPermissionHandler extends BasePermissionHandler<PermissionRespon
             this.getPermissionMode(),
             toolName,
             request.toolCallId
-        )
+        ) ?? (this.sessionApprovals.has(sessionApprovalKey(request, toolName)) ? 'approved_for_session' : null)
         if (autoDecision) {
             void this.autoApprove(request, toolName, toolInput, autoDecision)
             return
@@ -116,6 +125,20 @@ export class AcpPermissionHandler extends BasePermissionHandler<PermissionRespon
         this.pendingBackendRequests.delete(response.id)
         const decision = response.decision ?? (response.approved ? 'approved' : 'denied')
 
+        const completion: PermissionCompletion = {
+            status: response.approved ? 'approved' : 'denied',
+            decision,
+            reason: response.reason
+        }
+
+        if (decision === 'approved_for_session' && request
+            && !request.options.some((option) => option.kind === 'allow_always')) {
+            this.sessionApprovals.add(sessionApprovalKey(request, pending.toolName))
+        }
+        // Record the decision before answering the agent: a turn that ends right
+        // after the answer runs cancelAll('Prompt finished'), which would
+        // otherwise mark this still-listed request as canceled.
+        this.finalizeRequest(response.id, completion)
         if (decision === 'abort' && request) {
             await this.backend.cancelPrompt(request.sessionId)
         }
@@ -124,11 +147,7 @@ export class AcpPermissionHandler extends BasePermissionHandler<PermissionRespon
         }
         pending.resolve()
 
-        return {
-            status: response.approved ? 'approved' : 'denied',
-            decision,
-            reason: response.reason
-        }
+        return completion
     }
 
     protected handleMissingPendingResponse(response: PermissionResponseMessage): void {
