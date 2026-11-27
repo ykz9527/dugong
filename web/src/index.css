@@ -1069,3 +1069,22 @@ html {
         pointer-events: none;
     }
 }
+
+/*
+ * The sidebar can be 300px wide; there the header's icon buttons lose their
+ * gaps and half their padding so the row still fits on one line. Unlayered so
+ * it beats the buttons' p-1 / gap-1 utilities.
+ */
+@container sidebar (width < 320px) {
+    .pw-sidebar-actions {
+        gap: 0;
+    }
+
+    .pw-sidebar-actions > :not(:last-child) {
+        padding: 2px;
+    }
+
+    .pw-sidebar-actions > :last-child {
+        margin-left: 4px;
+    }
+}

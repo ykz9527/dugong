@@ -131,7 +131,7 @@ Two CSS rules (both bit us once):
 | Lifecycle ruler | Backlog→Done baseline with ticks, red fill/marker at current step; blocked = red label under Running | "A month on the books" | `Tasks/TaskDetail.tsx` `LifecycleRuler` |
 | Field | 12px/600 label above, no box, 1px bottom border, 17px text | `.m-field` | `LoginPrompt.tsx` |
 | Assistant icon | speech bubble (no sparkles anywhere) | — | `Assistant/icons.tsx` |
-| Star button | in the header the pill needs ≥380px of room (container query), 320–380px gets a plain ☆ icon like its neighbours, narrower gets none; 1px black pill `☆ Star │ n`, `.pw-ghost-sweep`; star outline draws in, fills red on hover; count rolls up once; no count when the hub can't reach GitHub | GitHub-stars buttons (ReUI, shadcn.io) | `GitHubStar.tsx` |
+| Star button | in the header the pill needs ≥380px of room (container query), narrower gets a plain ☆ icon like its neighbours (under 320px the header icons drop their gaps and half their padding to fit); 1px black pill `☆ Star │ n`, `.pw-ghost-sweep`; star outline draws in, fills red on hover; count rolls up once; no count when the hub can't reach GitHub | GitHub-stars buttons (ReUI, shadcn.io) | `GitHubStar.tsx` |
 | Star invite | under the sidebar header once, a week after the first task: black top rule draws in, red 12px label, black pill + grey text button; either retires it | Docusaurus announcement bar | `GitHubStar.tsx` `StarInvite` |
 
 ## 7. Layout
