@@ -433,6 +433,88 @@ export type ListClaudeSessionsRpcRequest = z.infer<typeof ListClaudeSessionsRpcR
 export type ClaudeTranscriptCursor = z.infer<typeof ClaudeTranscriptCursorSchema>
 export type ListClaudeSessionsRpcResponse = z.infer<typeof ListClaudeSessionsRpcResponseSchema>
 
+/**
+ * One row of an Antigravity (agy) conversation, as the import writes it.
+ *
+ * agy keeps each conversation as protobuf rows in a SQLite file, with no
+ * transcript format of its own to forward, so the rows are translated into
+ * the generic agent payloads (`message`, `tool-call`, `tool-call-result`)
+ * the web renders for any flavor. `localId` is `agy:<conversation>:<step>…`,
+ * the idempotency key for re-imports.
+ */
+export const AgyImportedMessageSchema = z.object({
+    localId: z.string().min(1),
+    createdAt: z.number(),
+    content: z.union([
+        z.object({
+            role: z.literal('user'),
+            content: z.object({ type: z.literal('text'), text: z.string() }),
+            meta: z.object({ sentFrom: z.literal('cli') })
+        }),
+        z.object({
+            role: z.literal('agent'),
+            content: z.object({ type: z.literal('codex'), data: z.unknown() }),
+            meta: z.object({ sentFrom: z.literal('cli') })
+        }),
+        /** The notice heading imported history (what it leaves out). */
+        z.object({
+            role: z.literal('agent'),
+            content: z.object({ type: z.literal('event'), data: z.unknown() }),
+            meta: z.object({ sentFrom: z.literal('cli') })
+        })
+    ])
+})
+
+export const AgyLocalSessionSummarySchema = z.object({
+    /** agy's conversation id; what `--conversation` / ACP `session/load` resumes. */
+    id: z.string().min(1),
+    title: z.string(),
+    lastUserMessage: z.string().nullable().optional(),
+    cwd: z.string().nullable().optional(),
+    /** The conversation's SQLite file. */
+    file: z.string().min(1),
+    modifiedAt: z.number(),
+    size: z.number().int().nonnegative().optional(),
+    /** A running agy holds this conversation's presence lock. Absent when the
+     *  machine could not tell (no process table). */
+    live: z.boolean().optional(),
+    holders: z.array(ClaudeSessionHolderSchema).optional()
+})
+
+/** The next step index to read; steps are agy's own row numbers. */
+export const AgyTranscriptCursorSchema = z.object({
+    stepIndex: z.number().int().nonnegative()
+})
+
+export const AgyLocalSessionWithMessagesSchema = AgyLocalSessionSummarySchema.extend({
+    messages: z.array(AgyImportedMessageSchema),
+    worktree: WorktreeMetadataSchema.optional(),
+    /** Where the next page starts; absent on the last page. */
+    nextCursor: AgyTranscriptCursorSchema.optional()
+})
+
+export const ListAgySessionsRpcRequestSchema = z.object({
+    cwd: z.string().nullable().optional(),
+    sessionIds: z.array(z.string().min(1)).optional(),
+    /** With exactly one session id: continue that conversation from here. */
+    cursor: AgyTranscriptCursorSchema.optional(),
+    /** Same meaning as for Claude: absent lists everything under the
+     *  workspace roots, empty lists nothing. */
+    userRoots: z.array(z.string()).optional()
+})
+
+export const ListAgySessionsRpcResponseSchema = z.union([
+    z.object({ success: z.literal(true), sessions: z.array(z.union([AgyLocalSessionWithMessagesSchema, AgyLocalSessionSummarySchema])) }),
+    z.object({ success: z.literal(false), error: z.string() })
+])
+
+export type AgyImportedMessage = z.infer<typeof AgyImportedMessageSchema>
+export type AgyLocalSessionSummary = z.infer<typeof AgyLocalSessionSummarySchema>
+export type AgyLocalSessionWithMessages = z.infer<typeof AgyLocalSessionWithMessagesSchema>
+export type AgyTranscriptCursor = z.infer<typeof AgyTranscriptCursorSchema>
+export type ListAgySessionsRpcRequest = z.infer<typeof ListAgySessionsRpcRequestSchema>
+export type ListAgySessionsRpcResponse = z.infer<typeof ListAgySessionsRpcResponseSchema>
+
 export const SessionCollaborationModeRequestSchema = z.object({
     mode: CodexCollaborationModeSchema
 })

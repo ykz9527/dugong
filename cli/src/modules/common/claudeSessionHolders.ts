@@ -34,9 +34,9 @@ export type ClaudeSessionHolderOptions = {
     claudeConfigDir: string
 }
 
-type ProcStat = { ppid: number; ttyNr: number; startTime: string }
+export type ProcStat = { ppid: number; ttyNr: number; startTime: string }
 
-function readStat(procRoot: string, pid: number): ProcStat | null {
+export function readStat(procRoot: string, pid: number): ProcStat | null {
     try {
         const text = readFileSync(join(procRoot, String(pid), 'stat'), 'utf-8')
         // The command name is parenthesised and may itself contain spaces or
@@ -53,7 +53,7 @@ function readStat(procRoot: string, pid: number): ProcStat | null {
     }
 }
 
-function readExe(procRoot: string, pid: number): string | null {
+export function readExe(procRoot: string, pid: number): string | null {
     try {
         return readlinkSync(join(procRoot, String(pid), 'exe')).replace(/ \(deleted\)$/, '')
     } catch {
@@ -75,7 +75,8 @@ function isClaudeProcess(procRoot: string, pid: number): boolean {
     return /\/claude\/versions\//.test(readExe(procRoot, pid) ?? '')
 }
 
-function launcherOf(procRoot: string, stat: ProcStat): string | null {
+/** What started a process: a dugong/hapi binary's name, `terminal`, or null. */
+export function launcherOf(procRoot: string, stat: ProcStat): string | null {
     let pid = stat.ppid
     for (let depth = 0; depth < MAX_ANCESTORS && pid > 1; depth += 1) {
         const exe = readExe(procRoot, pid)

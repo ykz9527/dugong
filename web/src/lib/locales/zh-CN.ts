@@ -1458,6 +1458,7 @@ export default {
   'board.adopt.confirmClosed': '我确认它已关闭',
   'board.adopt.alreadyImported': '已是任务',
   'board.adopt.liveHint': '运行中的会话不能接管，先退出它。',
+  'board.adopt.agyHistoryHint': 'agy 的历史会导入提问、回复和工具调用，部分工具输出可能缺失。',
   'board.adopt.workdirFromSession': '由会话本身决定',
   'board.adopt.importFailed': '无法导入这个 {agent} 会话。',
   'board.new.cancel': '取消',

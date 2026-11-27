@@ -365,7 +365,7 @@ const FAILED_SPAWN_CLAIM_WINDOW_MS = 15 * 60_000
 /**
  * Why a session cannot become a task.
  *  - `not-resumable`: only checked with `requireResumable` — the session is not
- *    a Claude or Codex conversation with a native id to resume.
+ *    a Claude, Codex or agy conversation with a native id to resume.
  *  - `machine-not-allowed`: the caller's `allowMachine` refused its machine.
  */
 export type AdoptRefusalReason =
@@ -393,6 +393,7 @@ type AdoptableMetadata = {
     summary?: string
     claudeSessionId?: string
     codexSessionId?: string
+    agySessionId?: string
 }
 
 function readAdoptableMetadata(value: unknown): AdoptableMetadata {
@@ -410,7 +411,8 @@ function readAdoptableMetadata(value: unknown): AdoptableMetadata {
         name: text(metadata.name),
         summary: text(summary?.text),
         claudeSessionId: text(metadata.claudeSessionId),
-        codexSessionId: text(metadata.codexSessionId)
+        codexSessionId: text(metadata.codexSessionId),
+        agySessionId: text(metadata.agySessionId)
     }
 }
 
@@ -1180,8 +1182,8 @@ export class TaskOrchestrator {
             permissionMode?: PermissionMode
             column?: TaskColumn
             origin?: 'user' | 'reconcile'
-            /** Refuse a session Start could not resume (anything but a Claude
-             *  or Codex conversation with its native id). An operator adopting
+            /** Refuse a session Start could not resume (anything but a Claude,
+             *  Codex or agy conversation with its native id). An operator adopting
              *  by hand expects Start to continue that conversation. */
             requireResumable?: boolean
             /** Whether the caller may use the session's machine. */
@@ -1207,11 +1209,13 @@ export class TaskOrchestrator {
         const flavor = AgentFlavorSchema.safeParse(metadata.flavor ?? 'claude')
         if (!flavor.success) return { outcome: 'not-adoptable', reason: 'unknown-flavor' }
         // Resuming opens a *new* HAPI row that continues the same native
-        // conversation (`claude --resume` / `codex resume`), so the task has to
-        // carry the native id, not just the imported row's.
+        // conversation (`claude --resume` / `codex resume` / agy's
+        // `--conversation`), so the task has to carry the native id, not just
+        // the imported row's.
         const nativeSessionId = flavor.data === 'codex'
             ? metadata.codexSessionId
-            : flavor.data === 'claude' ? metadata.claudeSessionId : undefined
+            : flavor.data === 'claude' ? metadata.claudeSessionId
+                : flavor.data === 'agy' ? metadata.agySessionId : undefined
         if (options?.requireResumable && !nativeSessionId) {
             return { outcome: 'not-adoptable', reason: 'not-resumable', flavor: flavor.data }
         }

@@ -18,6 +18,8 @@ import type {
     PermissionMode,
     ClaudeImportSessionsResponse,
     ClaudeLocalSessionsResponse,
+    AgyLocalSessionsResponse,
+    AgyImportSessionsResponse,
     PiImportSessionsResponse,
     PiLocalSessionsResponse,
     PushSubscriptionPayload,
@@ -537,6 +539,27 @@ export class ApiClient {
         force?: boolean
     }): Promise<ClaudeImportSessionsResponse> {
         return await this.request<ClaudeImportSessionsResponse>('/api/claude/import-sessions', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        })
+    }
+
+    async getAgySessions(machineId?: string | null, workspaceUserId?: string | null): Promise<AgyLocalSessionsResponse> {
+        const params = new URLSearchParams()
+        if (machineId?.trim()) params.set('machineId', machineId.trim())
+        if (workspaceUserId) params.set('workspaceUser', workspaceUserId)
+        const query = params.size ? `?${params.toString()}` : ''
+        return await this.request<AgyLocalSessionsResponse>(`/api/agy/sessions${query}`)
+    }
+
+    async importAgySessions(payload: {
+        sessionIds: string[]
+        machineId?: string | null
+        permissionMode?: PermissionMode
+        /** The operator confirmed the session is closed. */
+        force?: boolean
+    }): Promise<AgyImportSessionsResponse> {
+        return await this.request<AgyImportSessionsResponse>('/api/agy/import-sessions', {
             method: 'POST',
             body: JSON.stringify(payload)
         })

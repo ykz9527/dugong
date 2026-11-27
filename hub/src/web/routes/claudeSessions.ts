@@ -26,7 +26,7 @@ import { resolveWorkspaceScope } from './workspaceScope'
  * prefix check rather than a walk over an active path.
  */
 
-const importLocks = new Map<string, Promise<ClaudeImportResult>>()
+const importLocks = new Map<string, Promise<unknown>>()
 
 /** Most transcripts one import request may name. */
 const MAX_IMPORT_SESSIONS = 100
@@ -60,7 +60,7 @@ const LIVE_TRANSCRIPT_WINDOW_MS = 60_000
  * would be refused, and restarting a runner to re-advertise costs every
  * session it owns. Better to try, and to explain a silence when it happens.
  */
-function describeListFailure(cause: unknown): string {
+export function describeListFailure(cause: unknown): string {
     const message = cause instanceof Error ? cause.message : String(cause)
     return /timed out|timeout/i.test(message)
         ? 'The machine did not answer in time. Its runner may have lost its connection to the hub, or predate this feature — restarting the runner picks up a newer build.'
@@ -197,7 +197,7 @@ function storedMetadata(session: StoredSession): Record<string, unknown> {
  */
 export type ClaudeLiveness = 'running' | 'unsure'
 
-function classifyLiveness(
+export function classifyLiveness(
     session: Pick<ClaudeLocalSessionSummary, 'live' | 'holders' | 'modifiedAt'>,
     now = Date.now()
 ): ClaudeLiveness | null {
@@ -220,28 +220,29 @@ function describeHolders(session: Pick<ClaudeLocalSessionSummary, 'holders' | 'm
     return parts.join('; ')
 }
 
-function adoptRefusal(
+export function adoptRefusal(
     session: Pick<ClaudeLocalSessionSummary, 'live' | 'holders' | 'modifiedAt'>,
-    force: boolean
+    force: boolean,
+    agent = 'Claude'
 ): { code: string; message: string } | null {
     const liveness = classifyLiveness(session)
     if (liveness === 'running') {
         const evidence = describeHolders(session)
         return {
             code: 'session_live',
-            message: `This Claude session is still running${evidence ? ` (${evidence})` : ''}. Exit it, then adopt it.`
+            message: `This ${agent} session is still running${evidence ? ` (${evidence})` : ''}. Exit it, then adopt it.`
         }
     }
     if (liveness === 'unsure' && !force) {
         return {
             code: 'session_maybe_live',
-            message: `This Claude session may still be in use (${describeHolders(session)}). Confirm it is closed to adopt it.`
+            message: `This ${agent} session may still be in use (${describeHolders(session)}). Confirm it is closed to adopt it.`
         }
     }
     return null
 }
 
-function resolveClaudeMachine(
+export function resolveClaudeMachine(
     engine: SyncEngine | null,
     namespace: string,
     requestedMachineId?: string | null
@@ -317,7 +318,7 @@ function buildClaudeMetadata(
     } as Metadata
 }
 
-function updateMetadataWithRetry(
+export function updateMetadataWithRetry(
     store: Store,
     sessionId: string,
     namespace: string,
@@ -335,9 +336,9 @@ function updateMetadataWithRetry(
             { touchUpdatedAt: false }
         )
         if (result.result === 'success') return next
-        if (result.result === 'error') throw new Error('Failed to persist Claude import metadata')
+        if (result.result === 'error') throw new Error('Failed to persist import metadata')
     }
-    throw new Error('Claude import metadata changed concurrently')
+    throw new Error('Import metadata changed concurrently')
 }
 
 function importedPrefix(sessionId: string): string {
@@ -350,19 +351,21 @@ function importedPrefix(sessionId: string): string {
  * already stored — means the file is not the one we imported from, and
  * appending to it would interleave two histories.
  */
-function classifyImportDelta(
+export function classifyImportDelta<M extends { localId: string; content: unknown }>(
     existing: StoredMessage[],
-    transcript: ClaudeLocalSessionWithMessages
-): { messages: ClaudeLocalSessionWithMessages['messages']; error?: string } {
+    transcript: { id: string; messages: M[] },
+    prefix = importedPrefix(transcript.id),
+    agent = 'Claude'
+): { messages: M[]; error?: string } {
     const sourceIndexByLocalId = new Map(transcript.messages.map((message, index) => [message.localId, index]))
     const storedImported = existing
-        .filter((message) => message.localId?.startsWith(importedPrefix(transcript.id)))
+        .filter((message) => message.localId?.startsWith(prefix))
 
     let priorSourceIndex = -1
     for (const message of storedImported) {
         const sourceIndex = sourceIndexByLocalId.get(message.localId!)
         if (sourceIndex === undefined || sourceIndex <= priorSourceIndex) {
-            return { messages: [], error: 'The local Claude transcript no longer extends the history already imported' }
+            return { messages: [], error: `The local ${agent} transcript no longer extends the history already imported` }
         }
         priorSourceIndex = sourceIndex
     }
@@ -373,7 +376,7 @@ function classifyImportDelta(
     ]))
     const changed = storedImported.find((message) => !isDeepStrictEqual(sourceByLocalId.get(message.localId!), message.content))
     if (changed?.localId) {
-        return { messages: [], error: `The local Claude transcript changed an already-imported entry (${changed.localId})` }
+        return { messages: [], error: `The local ${agent} transcript changed an already-imported entry (${changed.localId})` }
     }
 
     const imported = new Set(storedImported.map((message) => message.localId!))
@@ -495,8 +498,8 @@ export function importClaudeSession(options: {
     }
 }
 
-async function importWithLock(key: string, work: () => ClaudeImportResult): Promise<ClaudeImportResult> {
-    const prior = importLocks.get(key)
+export async function importWithLock<T>(key: string, work: () => T): Promise<T> {
+    const prior = importLocks.get(key) as Promise<T> | undefined
     if (prior) return prior
     const current = Promise.resolve().then(work)
     importLocks.set(key, current)

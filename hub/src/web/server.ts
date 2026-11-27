@@ -34,6 +34,7 @@ import { createCliAssistantRoutes } from './routes/cliAssistant'
 import { createCodexDesktopRoutes } from './routes/codexDesktop'
 import { createPiSessionRoutes } from './routes/piSessions'
 import { createClaudeSessionRoutes } from './routes/claudeSessions'
+import { createAgySessionRoutes } from './routes/agySessions'
 import { createPushRoutes } from './routes/push'
 import { createDevicesRoutes } from './routes/devices'
 import { createVoiceRoutes } from './routes/voice'
@@ -380,6 +381,10 @@ export function createWebApp(options: {
         getSyncEngine: options.getSyncEngine
     }))
     app.route('/api', createClaudeSessionRoutes({
+        store: options.store,
+        getSyncEngine: options.getSyncEngine
+    }))
+    app.route('/api', createAgySessionRoutes({
         store: options.store,
         getSyncEngine: options.getSyncEngine
     }))

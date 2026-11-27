@@ -330,6 +330,18 @@ export type ClaudeImportSessionsResponse = {
     error?: string
 }
 
+/** agy's listing has the Claude listing's shape (no message count). */
+export type AgyLocalSessionsResponse = ClaudeLocalSessionsResponse
+
+export type AgyImportResult = Omit<ClaudeImportResult, 'claudeSessionId'> & { agySessionId: string }
+
+export type AgyImportSessionsResponse = {
+    success: boolean
+    results: AgyImportResult[]
+    machineId?: string
+    error?: string
+}
+
 
 export type CodexArchiveSessionResponse = {
     success: true

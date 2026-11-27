@@ -4,6 +4,7 @@ import {
     ArchiveCodexSessionRpcResponseSchema,
     CursorChatStoreStatusSchema,
     ListClaudeSessionsRpcResponseSchema,
+    ListAgySessionsRpcResponseSchema,
     ListCodexSessionsRpcResponseSchema,
     ListPiSessionsRpcResponseSchema,
     RemoveWorktreeResponseSchema,
@@ -30,6 +31,8 @@ import type {
     MachineCreateDirectoryResponse,
     ListClaudeSessionsRpcResponse,
     ClaudeTranscriptCursor,
+    ListAgySessionsRpcResponse,
+    AgyTranscriptCursor,
     ListCodexSessionsRpcResponse,
     ListPiSessionsRpcResponse,
     ArchiveCodexSessionRpcResponse,
@@ -130,6 +133,7 @@ export type RpcListCodexModelsResponse = CodexModelsResponse
 export type RpcListCodexSessionsResponse = ListCodexSessionsRpcResponse
 export type RpcListPiSessionsResponse = ListPiSessionsRpcResponse
 export type RpcListClaudeSessionsResponse = ListClaudeSessionsRpcResponse
+export type RpcListAgySessionsResponse = ListAgySessionsRpcResponse
 export type RpcArchiveCodexSessionResponse = ArchiveCodexSessionRpcResponse
 export type RpcCursorModel = CursorModelSummary
 export type RpcListCursorModelsResponse = CursorModelsResponse
@@ -510,6 +514,22 @@ export class RpcGateway {
             ...(userRoots ? { userRoots } : {})
         }, DEFAULT_RPC_TIMEOUT_MS)
         return ListClaudeSessionsRpcResponseSchema.parse(result)
+    }
+
+    /** Same shape and timing as the Claude listing: one summaries query and
+     *  bounded import pages. */
+    async listAgySessionsForMachine(
+        machineId: string,
+        sessionIds?: string[],
+        cursor?: AgyTranscriptCursor,
+        userRoots?: string[]
+    ): Promise<RpcListAgySessionsResponse> {
+        const result = await this.machineRpc(machineId, RPC_METHODS.ListAgySessions, {
+            sessionIds,
+            ...(cursor ? { cursor } : {}),
+            ...(userRoots ? { userRoots } : {})
+        }, DEFAULT_RPC_TIMEOUT_MS)
+        return ListAgySessionsRpcResponseSchema.parse(result)
     }
 
     async archiveCodexSessionForMachine(machineId: string, sessionId: string): Promise<RpcArchiveCodexSessionResponse> {

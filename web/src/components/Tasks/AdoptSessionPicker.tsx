@@ -10,7 +10,7 @@ import type { ClaudeSessionHolder } from '@hapi/protocol/apiTypes'
 const ALL_DIRECTORIES = '__all__'
 
 /** Agents whose sessions the hub can import and a card can resume. */
-export const ADOPTABLE_FLAVORS = ['claude', 'codex'] as const
+export const ADOPTABLE_FLAVORS = ['claude', 'codex', 'agy'] as const
 export type AdoptableFlavor = typeof ADOPTABLE_FLAVORS[number]
 
 /** A native session as the picker lists it, whichever agent ran it. */
@@ -22,14 +22,14 @@ export type AdoptableSession = {
     modifiedAt: number
     /** Absent when the machine read only the ends of a long transcript. */
     messageCount?: number
-    /** Claude only: transcript bytes, shown when there is no count. */
+    /** Claude and agy: transcript bytes, shown when there is no count. */
     size?: number
-    /** Claude only: `running` when a process writes it now, `unsure` when
+    /** Claude and agy: `running` when a process writes it now, `unsure` when
      *  something suggests it might (see the hub's `classifyLiveness`). */
     liveness?: 'running' | 'unsure'
-    /** Claude only: the processes tied to it, shown as the reason. */
+    /** Claude and agy: the processes tied to it, shown as the reason. */
     holders?: ClaudeSessionHolder[]
-    /** Claude only: the session already has a HAPI row. */
+    /** Claude and agy: the session already has a HAPI row. */
     hapiSessionId?: string
     /** Set when the operator picked an `unsure` session by confirming it is closed. */
     force?: boolean
@@ -47,6 +47,11 @@ async function listAdoptableSessions(
         // Codex import re-syncs a session already in the hub instead of
         // refusing it, so nothing here is marked unselectable.
         const response = await api.getCodexSessions(null, machineId, workspaceUserId)
+        if (!response.success) throw new Error(response.error)
+        return response.sessions
+    }
+    if (flavor === 'agy') {
+        const response = await api.getAgySessions(machineId, workspaceUserId)
         if (!response.success) throw new Error(response.error)
         return response.sessions
     }
@@ -83,7 +88,7 @@ function livenessReason(session: AdoptableSession, t: ReturnType<typeof useTrans
 }
 
 /**
- * Pick a Claude Code or Codex session that was started outside dugong.
+ * Pick a Claude Code, Codex or agy session that was started outside dugong.
  *
  * Single-select on purpose: the result is one task, and a task is one
  * conversation. A Claude session that already has a HAPI row, or that a live
@@ -264,7 +269,10 @@ export function AdoptSessionPicker(props: {
                 )}
             </div>
             <div className="flex items-baseline justify-between gap-3 text-xs text-[var(--app-hint)]">
-                <p>{t('board.adopt.liveHint')}</p>
+                <p>
+                    {t('board.adopt.liveHint')}
+                    {flavor === 'agy' ? ` ${t('board.adopt.agyHistoryHint')}` : null}
+                </p>
                 {activeUser ? (
                     <button
                         type="button"

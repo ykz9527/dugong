@@ -1454,6 +1454,7 @@ export default {
   'board.adopt.confirmClosed': 'I confirm it is closed',
   'board.adopt.alreadyImported': 'already a task',
   'board.adopt.liveHint': 'A running session cannot be adopted. Exit it first.',
+  'board.adopt.agyHistoryHint': 'agy history comes over as prompts, replies and tool calls; some tool output may be missing.',
   'board.adopt.workdirFromSession': 'Comes from the session',
   'board.adopt.importFailed': 'Could not import this {agent} session.',
   'board.new.cancel': 'Cancel',

@@ -220,7 +220,7 @@ function adoptFailureResponse(
             return machineDenied ?? c.json({ error: 'Machine not found' }, 404)
         case 'not-resumable':
             return c.json({
-                error: result.flavor === 'claude' || result.flavor === 'codex'
+                error: result.flavor === 'claude' || result.flavor === 'codex' || result.flavor === 'agy'
                     ? 'Session has no native session id to resume'
                     : `Adopting a ${result.flavor ?? 'unknown'} session is not supported yet`
             }, 400)

@@ -11,11 +11,13 @@ import { configuration } from '@/configuration'
 import type { ClientToServerEvents, ServerToClientEvents, Update, UpdateMachineBody } from '@hapi/protocol'
 import {
     ArchiveCodexSessionRpcRequestSchema,
+    ListAgySessionsRpcRequestSchema,
     ListClaudeSessionsRpcRequestSchema,
     ListCodexSessionsRpcRequestSchema,
     ListPiSessionsRpcRequestSchema,
     RemoveWorktreeRequestSchema,
     type ArchiveCodexSessionRpcResponse,
+    type ListAgySessionsRpcResponse,
     type ListClaudeSessionsRpcResponse,
     type ListCodexSessionsRpcResponse,
     type ListPiSessionsRpcResponse,
@@ -55,6 +57,7 @@ import { applyVersionedAck } from './versionedUpdate'
 import { archiveLocalCodexSession, listLocalCodexSessionSummaries, listLocalCodexSessionsWithMessagesByIds } from '../modules/common/codexSessions'
 import { listLocalPiSessionSummaries, listLocalPiSessionsWithMessagesByIds } from '../modules/common/piSessions'
 import { listLocalClaudeSessionSummaries, listLocalClaudeSessionsWithMessagesByIds } from '../modules/common/claudeSessions'
+import { listLocalAgySessionSummaries, listLocalAgySessionsWithMessagesByIds } from '../modules/common/agySessions'
 import { isSessionOwnedByUser } from '../modules/common/userOwnedSession'
 import { buildSocketIoExtraHeaderOptions } from './hubExtraHeaders'
 import { collectMachineHealth } from '@/utils/machineHealth'
@@ -475,6 +478,39 @@ export class ApiMachineClient {
                         && await this.isLocalSessionWithinWorkspaceRoots(session),
                     userRoots ?? this.normalizedWorkspaceRoots
                 )
+                return { success: true, sessions }
+            }
+        )
+        this.rpcHandlerManager.registerHandler<unknown, ListAgySessionsRpcResponse>(
+            RPC_METHODS.ListAgySessions,
+            async (params) => {
+                const parsed = ListAgySessionsRpcRequestSchema.safeParse(params)
+                if (!parsed.success) return { success: false, error: 'Invalid agy sessions request' }
+                if (parsed.data.sessionIds) {
+                    const ids = new Set(parsed.data.sessionIds)
+                    if (parsed.data.cursor && ids.size !== 1) {
+                        return { success: false, error: 'A transcript cursor applies to exactly one session' }
+                    }
+                    let found: Awaited<ReturnType<typeof listLocalAgySessionsWithMessagesByIds>>
+                    try {
+                        found = await listLocalAgySessionsWithMessagesByIds(ids, parsed.data.cursor)
+                    } catch (error) {
+                        return { success: false, error: error instanceof Error ? error.message : 'Failed to read the agy conversation' }
+                    }
+                    const sessions = []
+                    for (const session of found) {
+                        if (await this.isLocalSessionWithinWorkspaceRoots(session)) sessions.push(session)
+                    }
+                    return { success: true, sessions }
+                }
+                // Same visibility rule as Claude and Codex, applied inside the
+                // scan so hidden sessions do not use up the limit.
+                const userRoots = parsed.data.userRoots
+                if (userRoots && userRoots.length === 0) return { success: true, sessions: [] }
+                const sessions = await listLocalAgySessionSummaries({
+                    accept: async (session) => (!userRoots || isSessionOwnedByUser(session.cwd, userRoots))
+                        && await this.isLocalSessionWithinWorkspaceRoots(session)
+                })
                 return { success: true, sessions }
             }
         )

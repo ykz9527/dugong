@@ -270,6 +270,26 @@ describe('sessions no card owns', () => {
         expect(card?.spawn).toMatchObject({ adoptedSessionId: 'term-1', adoptedNativeSessionId: 'native-term-1' })
     })
 
+    it('carries an imported agy conversation id, so Start resumes it', () => {
+        store.sessions.getOrCreateSession('agy-1', {
+            path: '/repo',
+            host: 'box',
+            machineId: 'box-1',
+            flavor: 'agy',
+            agySessionId: 'a0922cd8-3b62-4433-9674-a17b24d99771'
+        }, null, 'default', undefined, undefined, undefined, 'agy-1')
+        sessions.set('agy-1', { id: 'agy-1', namespace: 'default', active: false, thinking: false })
+
+        const result = orchestrator.adoptSession('agy-1', { requireResumable: true, origin: 'user' })
+
+        expect(result.outcome).toBe('adopted')
+        expect(cards()[0]?.spawn).toMatchObject({
+            flavor: 'agy',
+            adoptedSessionId: 'agy-1',
+            adoptedNativeSessionId: 'a0922cd8-3b62-4433-9674-a17b24d99771'
+        })
+    })
+
     it('settles the adopted run like any other when the session ends', () => {
         orchestrator.start()
         seedOffBoard('term-1')

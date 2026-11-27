@@ -32,13 +32,13 @@ function patchTaskInLists(queryClient: QueryClient, taskId: string, patch: Parti
 
 /** A session started outside dugong, to be taken over by a new task. */
 export type AdoptTaskInput = {
-    flavor: 'claude' | 'codex'
+    flavor: 'claude' | 'codex' | 'agy'
     /** The agent's own id for the conversation. */
     nativeSessionId: string
     machineId: string
     title?: string
     permissionMode?: PermissionMode
-    /** Claude only: the operator confirmed a possibly-open session is closed. */
+    /** Claude and agy: the operator confirmed a possibly-open session is closed. */
     force?: boolean
 }
 
@@ -56,6 +56,19 @@ async function importAdoptedSession(api: ApiClient, input: AdoptTaskInput, faile
             throw new Error(imported.error ?? failed)
         }
         return hapiSessionId
+    }
+    if (input.flavor === 'agy') {
+        const imported = await api.importAgySessions({
+            sessionIds: [input.nativeSessionId],
+            machineId: input.machineId,
+            permissionMode: input.permissionMode,
+            force: input.force
+        })
+        const result = imported.results[0]
+        if (!result?.hapiSessionId || result.error) {
+            throw new Error(result?.error?.message ?? imported.error ?? failed)
+        }
+        return result.hapiSessionId
     }
     const imported = await api.importClaudeSessions({
         sessionIds: [input.nativeSessionId],
@@ -110,7 +123,7 @@ export function useTaskActions(api: ApiClient | null): {
     })
 
     /**
-     * Take over a Claude or Codex session dugong never spawned.
+     * Take over a Claude, Codex or agy session dugong never spawned.
      *
      * Two calls, one operator action: the import writes the native transcript
      * into a HAPI session, and only then can a task point at it. They are kept
