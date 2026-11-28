@@ -240,6 +240,20 @@ describe('runCodex', () => {
         expect(harness.bootstrapArgs[0]).not.toHaveProperty('lazy')
     })
 
+    it('creates an assistant session already marked as one', async () => {
+        // The hub turns a session into a task card on its first message
+        // unless the role is there by then.
+        await runCodexImpl({
+            startedBy: 'runner',
+            workingDirectory: '/tmp/project',
+            assistant: { workspaceUserId: 'person-1', addDirs: [] }
+        })
+
+        expect(harness.bootstrapArgs[0]).toEqual(expect.objectContaining({
+            metadataOverrides: { role: 'assistant', workspaceUserId: 'person-1' }
+        }))
+    })
+
     it('replays transcript history when attaching a new Hapi session to an existing Codex thread', async () => {
         await runCodexImpl({
             workingDirectory: '/tmp/project',

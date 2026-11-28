@@ -49,12 +49,18 @@ export async function runCodex(opts: {
         controlledByUser: false
     };
     const useLazyBootstrap = !opts.existingSessionId && startedBy === 'terminal';
+    // In the metadata the session is created with: the hub turns a session
+    // into a task card on its first message unless it is marked assistant.
+    const metadataOverrides = opts.assistant
+        ? { role: 'assistant' as const, workspaceUserId: opts.assistant.workspaceUserId }
+        : undefined;
     const bootstrap = opts.existingSessionId
         ? await bootstrapExistingSession({
             sessionId: opts.existingSessionId,
             flavor: 'codex',
             startedBy,
-            workingDirectory
+            workingDirectory,
+            metadataOverrides
         })
         : await (useLazyBootstrap ? bootstrapLazySession : bootstrapSession)({
             flavor: 'codex',
@@ -62,21 +68,13 @@ export async function runCodex(opts: {
             workingDirectory,
             agentState: state,
             model: opts.model,
-            modelReasoningEffort: opts.modelReasoningEffort
+            modelReasoningEffort: opts.modelReasoningEffort,
+            metadataOverrides
         });
     const { api, session, sessionInfo } = bootstrap;
     const codexSourceSessionId = typeof sessionInfo.metadata?.codexSourceSessionId === 'string'
         ? sessionInfo.metadata.codexSourceSessionId
         : undefined;
-
-    if (opts.assistant) {
-        const { workspaceUserId } = opts.assistant;
-        session.updateMetadata((metadata) => ({
-            ...metadata,
-            role: 'assistant' as const,
-            workspaceUserId
-        }));
-    }
 
     const startingMode: 'local' | 'remote' = startedBy === 'runner' ? 'remote' : 'local';
 

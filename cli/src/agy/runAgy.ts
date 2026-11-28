@@ -42,13 +42,19 @@ export async function runAgy(opts: {
     };
 
     const initialModel = opts.model ?? null;
+    // In the metadata the session is created with: the hub turns a session
+    // into a task card on its first message unless it is marked assistant.
+    const metadataOverrides = opts.assistant
+        ? { role: 'assistant' as const, workspaceUserId: opts.assistant.workspaceUserId }
+        : undefined;
 
     const bootstrap = opts.existingSessionId
         ? await bootstrapExistingSession({
             sessionId: opts.existingSessionId,
             flavor: 'agy',
             startedBy,
-            workingDirectory
+            workingDirectory,
+            metadataOverrides
         })
         : await bootstrapSession({
             flavor: 'agy',
@@ -57,18 +63,10 @@ export async function runAgy(opts: {
             tag: `__hapi_agy_${randomUUID()}`,
             agentState: initialState,
             model: initialModel ?? undefined,
-            effort: opts.effort ?? undefined
+            effort: opts.effort ?? undefined,
+            metadataOverrides
         });
     const { api, session } = bootstrap;
-
-    if (opts.assistant) {
-        const { workspaceUserId } = opts.assistant;
-        session.updateMetadata((metadata) => ({
-            ...metadata,
-            role: 'assistant' as const,
-            workspaceUserId
-        }));
-    }
 
     const messageQueue = new MessageQueue2<AgyMode>((mode) => hashObject({
         permissionMode: mode.permissionMode,
