@@ -1,7 +1,8 @@
 import React from 'react';
 import { logger } from '@/ui/logger';
+import { buildHapiMcpBridge, type HapiMcpBridge, type HapiMcpBridgeOptions } from '@/codex/utils/buildHapiMcpBridge';
 import { convertAgentMessage } from '@/agent/messageConverter';
-import type { AgentMessage, PromptContent } from '@/agent/types';
+import type { AgentMessage, McpServerStdio, PromptContent } from '@/agent/types';
 import type { AcpSdkBackend } from '@/agent/backends/acp';
 import { createNativeSessionTitleMetadataSync } from '@/agent/nativeSessionTitle';
 import {
@@ -20,7 +21,20 @@ export type AgyRemoteLauncherOptions = {
     /** Injectable for tests; production spawns `agy acp`. */
     createBackend?: () => AcpSdkBackend;
     readTitle?: (conversationId: string) => Promise<string | null>;
+    buildMcpBridge?: (
+        client: AgySession['client'],
+        options?: HapiMcpBridgeOptions
+    ) => Promise<HapiMcpBridge>;
 };
+
+function toAcpMcpServers(config: Record<string, { command: string; args: string[] }>): McpServerStdio[] {
+    return Object.entries(config).map(([name, entry]) => ({
+        name,
+        command: entry.command,
+        args: entry.args,
+        env: []
+    }));
+}
 
 /**
  * agy over ACP. One long-lived `agy acp` process per HAPI session; each queued
@@ -36,9 +50,14 @@ export class AgyRemoteLauncher extends RemoteLauncherBase {
     private readonly session: AgySession;
     private readonly createBackend: () => AcpSdkBackend;
     private readonly readTitle: (conversationId: string) => Promise<string | null>;
+    private readonly buildMcpBridge: (
+        client: AgySession['client'],
+        options?: HapiMcpBridgeOptions
+    ) => Promise<HapiMcpBridge>;
     private readonly syncNativeTitle: (title: unknown) => void;
     private backend: AcpSdkBackend | null = null;
     private permissionHandler: AcpPermissionHandler | null = null;
+    private happyServer: { stop: () => void } | null = null;
     private abortController = new AbortController();
     private acpSessionId: string | null = null;
     private currentModel: string | null = null;
@@ -49,6 +68,7 @@ export class AgyRemoteLauncher extends RemoteLauncherBase {
         this.session = session;
         this.createBackend = opts.createBackend ?? createAgyBackend;
         this.readTitle = opts.readTitle ?? readAgyConversationTitle;
+        this.buildMcpBridge = opts.buildMcpBridge ?? buildHapiMcpBridge;
         this.syncNativeTitle = createNativeSessionTitleMetadataSync(session.client);
     }
 
@@ -67,6 +87,13 @@ export class AgyRemoteLauncher extends RemoteLauncherBase {
 
     protected async runMainLoop(): Promise<void> {
         const session = this.session;
+        const { server: happyServer, mcpServers } = await this.buildMcpBridge(session.client, {
+            enableChangeTitle: false,
+            skillLookup: { workingDirectory: session.path, flavor: 'agy' }
+        });
+        this.happyServer = happyServer;
+        const acpMcpServers = toAcpMcpServers(mcpServers);
+
         const backend = this.createBackend();
         this.backend = backend;
         session.setKillHandler(() => this.handleAbort());
@@ -78,7 +105,7 @@ export class AgyRemoteLauncher extends RemoteLauncherBase {
         });
 
         await backend.initialize();
-        const acpSessionId = await this.openSession(backend);
+        const acpSessionId = await this.openSession(backend, acpMcpServers);
         this.acpSessionId = acpSessionId;
         session.onSessionFound(acpSessionId);
         this.currentModel = backend.getConfigOptionByCategory(acpSessionId, 'model')?.currentValue
@@ -125,8 +152,8 @@ export class AgyRemoteLauncher extends RemoteLauncherBase {
         }
     }
 
-    private async openSession(backend: AcpSdkBackend): Promise<string> {
-        const config = { cwd: this.session.path, mcpServers: [] };
+    private async openSession(backend: AcpSdkBackend, mcpServers: McpServerStdio[]): Promise<string> {
+        const config = { cwd: this.session.path, mcpServers };
         const resumeId = this.session.sessionId;
         if (!resumeId) return backend.newSession(config);
         try {
@@ -184,6 +211,8 @@ export class AgyRemoteLauncher extends RemoteLauncherBase {
         this.permissionHandler = null;
         await this.backend?.disconnect();
         this.backend = null;
+        this.happyServer?.stop();
+        this.happyServer = null;
     }
 
     private handleAgentMessage(message: AgentMessage): void {

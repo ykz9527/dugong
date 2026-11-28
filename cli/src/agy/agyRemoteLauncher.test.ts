@@ -114,9 +114,28 @@ function createHarness(opts: {
         sendSessionEvent: vi.fn()
     };
 
+    const mcpStop = vi.fn();
+    const mcpArgs = [
+        'mcp',
+        '--url',
+        'http://127.0.0.1:41234',
+        '--tools',
+        'display_image,display_video,display_media,list_peers,ping_peer,inspect_peer,skill_lookup'
+    ];
+    const buildMcpBridge = vi.fn(async () => ({
+        server: { url: 'http://127.0.0.1:41234', stop: mcpStop },
+        mcpServers: {
+            hapi: {
+                command: 'dugong',
+                args: mcpArgs
+            }
+        }
+    }));
+
     const launcher = new AgyRemoteLauncher(session as never, {
         createBackend: () => backend as unknown as AcpSdkBackend,
-        readTitle: async () => null
+        readTitle: async () => null,
+        buildMcpBridge
     });
 
     return {
@@ -124,6 +143,9 @@ function createHarness(opts: {
         session,
         launcher,
         answers,
+        buildMcpBridge,
+        mcpStop,
+        expectedMcpServers: [{ name: 'hapi', command: 'dugong', args: mcpArgs, env: [] }],
         get agentState() { return agentState; },
         setPermissionMode: (mode: PermissionMode) => { permissionMode = mode; },
         push: (text: string) => queue.push(text, opts.mode ?? { permissionMode }),
@@ -235,23 +257,37 @@ describe('AgyRemoteLauncher session setup', () => {
         h.close();
         await h.launcher.launch();
 
-        expect(h.backend.loadSession).toHaveBeenCalledWith({ cwd: '/tmp/agy-test', mcpServers: [], sessionId: 'conv-1' });
+        expect(h.buildMcpBridge).toHaveBeenCalledWith(h.session.client, {
+            enableChangeTitle: false,
+            skillLookup: { workingDirectory: '/tmp/agy-test', flavor: 'agy' }
+        });
+        expect(h.backend.loadSession).toHaveBeenCalledWith({
+            cwd: '/tmp/agy-test',
+            mcpServers: h.expectedMcpServers,
+            sessionId: 'conv-1'
+        });
         expect(h.backend.newSession).not.toHaveBeenCalled();
         expect(h.session.onSessionFound).toHaveBeenCalledWith('conv-1');
         expect(h.backend.setModel).toHaveBeenCalledWith('conv-1', 'gemini-4-carbon-high');
         expect(h.backend.setConfigOption).toHaveBeenCalledWith('conv-1', 'thought_level', 'low');
+        expect(h.mcpStop).toHaveBeenCalledTimes(1);
     });
 
-    it('starts a new conversation with a notice when resume fails', async () => {
+    it('starts a new conversation with MCP servers and a notice when resume fails', async () => {
         const h = createHarness({ turns: [[]], resumeId: 'conv-gone', loadFails: true });
         h.push('hello');
         h.close();
         await h.launcher.launch();
 
+        expect(h.backend.newSession).toHaveBeenCalledWith({
+            cwd: '/tmp/agy-test',
+            mcpServers: h.expectedMcpServers
+        });
         expect(h.session.onSessionFound).toHaveBeenCalledWith('conv-new');
         expect(h.session.sendSessionEvent).toHaveBeenCalledWith({
             type: 'message',
             message: 'agy could not resume this conversation; starting a new one.'
         });
+        expect(h.mcpStop).toHaveBeenCalledTimes(1);
     });
 });
