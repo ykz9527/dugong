@@ -4,15 +4,30 @@ import { initializeToken } from '@/ui/tokenInit'
 import { maybeAutoStartServer } from '@/utils/autoStartServer'
 import type { CommandDefinition } from './types'
 import { AGY_PERMISSION_MODES } from '@hapi/protocol/modes'
-import { parseRemoteAgentCommandOptions } from './agentCommandOptions'
+import { createAssistantArgParser, parseRemoteAgentCommandOptions } from './agentCommandOptions'
 
 export function parseAgyCommandOptions(commandArgs: string[]) {
+    const assistantArgs = createAssistantArgParser()
+    const rest: string[] = []
+    for (let i = 0; i < commandArgs.length; i++) {
+        const end = assistantArgs.consume(commandArgs, i)
+        if (end !== null) {
+            i = end
+            continue
+        }
+        rest.push(commandArgs[i])
+    }
     const options = parseRemoteAgentCommandOptions(
-        commandArgs,
+        rest,
         AGY_PERMISSION_MODES,
         ['remote'],
     )
-    return { ...options, startingMode: options.startingMode ?? 'remote' as const }
+    const assistant = assistantArgs.result()
+    return {
+        ...options,
+        startingMode: options.startingMode ?? 'remote' as const,
+        ...(assistant ? { assistant } : {})
+    }
 }
 
 export const agyCommand: CommandDefinition = {

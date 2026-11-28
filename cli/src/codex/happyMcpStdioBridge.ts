@@ -23,6 +23,7 @@ import {
   SESSION_ID_PREFIX_PARAM_DESCRIPTION,
 } from '@hapi/protocol/sessionCitation';
 import { ASSISTANT_TOOL_NAMES, registerAssistantTools, type AssistantToolRegistrar } from '@/claude/utils/assistantTools';
+import { ASSISTANT_CONFIRM_TOOLS } from '@hapi/protocol';
 
 const DEFAULT_TOOL_NAMES = ['change_title', 'display_image', 'display_video', 'display_media', 'list_peers', 'ping_peer', 'inspect_peer'];
 
@@ -57,6 +58,10 @@ export async function runHappyMcpStdioBridge(argv: string[]): Promise<void> {
     }
 
     let httpClient: Client | null = null;
+    // A confirm-first tool may wait for the person in the server (agy's
+    // assistant holds up to 150 s), past the SDK's 60 s request default.
+    const confirmTools = new Set<string>(ASSISTANT_CONFIRM_TOOLS);
+    const confirmCallOptions = { timeout: 175_000 };
 
     async function ensureHttpClient(): Promise<Client> {
       if (httpClient) return httpClient;
@@ -213,7 +218,7 @@ export async function runHappyMcpStdioBridge(argv: string[]): Promise<void> {
         async (args: Record<string, unknown>) => {
           try {
             const client = await ensureHttpClient();
-            const response = await client.callTool({ name: 'ping_peer', arguments: args });
+            const response = await client.callTool({ name: 'ping_peer', arguments: args }, undefined, confirmCallOptions);
             return response as any;
           } catch (error) {
             return {
@@ -330,7 +335,11 @@ export async function runHappyMcpStdioBridge(argv: string[]): Promise<void> {
           server.registerTool<any, any>(name, config, async (args: Record<string, unknown>) => {
             try {
               const client = await ensureHttpClient();
-              return await client.callTool({ name, arguments: args }) as any;
+              return await client.callTool(
+                { name, arguments: args },
+                undefined,
+                confirmTools.has(name) ? confirmCallOptions : undefined
+              ) as any;
             } catch (error) {
               return {
                 content: [{ type: 'text' as const, text: `Failed: ${error instanceof Error ? error.message : String(error)}` }],

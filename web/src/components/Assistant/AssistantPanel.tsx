@@ -408,6 +408,12 @@ function PanelBody(props: {
                 </p>
             ) : null}
 
+            {tab === 'chat' && agent === 'agy' ? (
+                <p className="border-b border-[var(--app-border)] px-4 py-2 text-xs text-[var(--app-hint)]">
+                    {t('assistant.agent.agyNote')}
+                </p>
+            ) : null}
+
             {tab === 'chat' && missingPaths.length > 0 ? (
                 <p className="border-b border-[var(--app-border)] px-4 py-2 text-xs text-[var(--app-badge-warning-text)]">
                     {t('assistant.machine.missingPaths', {

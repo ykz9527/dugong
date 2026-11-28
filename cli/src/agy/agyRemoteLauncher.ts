@@ -16,11 +16,17 @@ import type { AgySession } from './session';
 import type { AgyMode } from './types';
 import { createAgyBackend } from './utils/agyBackend';
 import { readAgyConversationTitle } from './utils/agySessionTitle';
+import { getAssistantRole } from '@/claude/assistantRole';
+import { hasAssistantGrant } from '@/claude/utils/assistantTools';
+import { getHapiBlobsDir } from '@/constants/uploadPaths';
+import { AGY_ASSISTANT_SYSTEM_PROMPT } from './assistantPrompt';
+import { createAssistantToolGate } from './assistantToolGate';
 
 export type AgyRemoteLauncherOptions = {
     /** Injectable for tests; production spawns `agy acp`. */
     createBackend?: () => AcpSdkBackend;
     readTitle?: (conversationId: string) => Promise<string | null>;
+    hasGrant?: (sessionId: string, toolId: string) => Promise<boolean>;
     buildMcpBridge?: (
         client: AgySession['client'],
         options?: HapiMcpBridgeOptions
@@ -45,11 +51,17 @@ function toAcpMcpServers(config: Record<string, { command: string; args: string[
  *
  * The ACP session id is agy's conversation id, so sessions created by the old
  * headless transport (`agy -p --conversation <id>`) resume via `session/load`.
+ *
+ * As a task assistant: the hub tools include the assistant's own, its prompt
+ * is appended to agy's through ACP `_meta` (on every load too, so a reopen
+ * gets it), the confirm-first tools ask in the MCP server, and agy may reach
+ * the person's directories and the upload folder.
  */
 export class AgyRemoteLauncher extends RemoteLauncherBase {
     private readonly session: AgySession;
     private readonly createBackend: () => AcpSdkBackend;
     private readonly readTitle: (conversationId: string) => Promise<string | null>;
+    private readonly hasGrant: (sessionId: string, toolId: string) => Promise<boolean>;
     private readonly buildMcpBridge: (
         client: AgySession['client'],
         options?: HapiMcpBridgeOptions
@@ -66,8 +78,11 @@ export class AgyRemoteLauncher extends RemoteLauncherBase {
     constructor(session: AgySession, opts: AgyRemoteLauncherOptions = {}) {
         super(process.env.DEBUG ? session.logPath : undefined);
         this.session = session;
-        this.createBackend = opts.createBackend ?? createAgyBackend;
+        const role = getAssistantRole();
+        this.createBackend = opts.createBackend
+            ?? (() => createAgyBackend(role ? { addDirs: [...role.addDirs, getHapiBlobsDir()] } : {}));
         this.readTitle = opts.readTitle ?? readAgyConversationTitle;
+        this.hasGrant = opts.hasGrant ?? hasAssistantGrant;
         this.buildMcpBridge = opts.buildMcpBridge ?? buildHapiMcpBridge;
         this.syncNativeTitle = createNativeSessionTitleMetadataSync(session.client);
     }
@@ -87,9 +102,11 @@ export class AgyRemoteLauncher extends RemoteLauncherBase {
 
     protected async runMainLoop(): Promise<void> {
         const session = this.session;
+        const assistant = getAssistantRole() !== null;
         const { server: happyServer, mcpServers } = await this.buildMcpBridge(session.client, {
             enableChangeTitle: false,
-            skillLookup: { workingDirectory: session.path, flavor: 'agy' }
+            skillLookup: { workingDirectory: session.path, flavor: 'agy' },
+            ...(assistant ? { assistant: true, confirmTool: this.createToolGate() } : {})
         });
         this.happyServer = happyServer;
         const acpMcpServers = toAcpMcpServers(mcpServers);
@@ -116,7 +133,8 @@ export class AgyRemoteLauncher extends RemoteLauncherBase {
         this.permissionHandler = new AcpPermissionHandler(
             session.client,
             backend,
-            () => session.getPermissionMode()
+            () => session.getPermissionMode(),
+            { assistant }
         );
         this.setupAbortHandlers(session.client.rpcHandlerManager, {
             onAbort: () => this.handleAbort(),
@@ -143,7 +161,7 @@ export class AgyRemoteLauncher extends RemoteLauncherBase {
                 this.messageBuffer.addMessage(`agy prompt failed: ${message}`, 'status');
             } finally {
                 session.onThinkingChange(false);
-                await this.permissionHandler?.cancelAll('Prompt finished');
+                await this.permissionHandler?.cancelAll('Prompt finished', { keepHapiAsks: true });
                 void this.syncTitle(acpSessionId);
                 if (session.queue.size() === 0 && !this.shouldExit) {
                     session.sendSessionEvent({ type: 'ready' });
@@ -152,8 +170,33 @@ export class AgyRemoteLauncher extends RemoteLauncherBase {
         }
     }
 
+    private createToolGate() {
+        const session = this.session;
+        return createAssistantToolGate({
+            isAlwaysProceed: () => session.getPermissionMode() === 'always-proceed',
+            hasGrant: (toolId) => this.hasGrant(session.client.sessionId, toolId),
+            ask: (toolId, input) => this.permissionHandler
+                ? this.permissionHandler.askHapiTool(toolId, input)
+                : Promise.reject(new Error('agy session is not ready')),
+            deliver: (text) => {
+                session.sendSessionEvent({ type: 'message', message: text.split('\n')[0].replace(/^\[dugong\] /, '') });
+                session.queue.push(text, {
+                    permissionMode: session.getPermissionMode() === 'always-proceed' ? 'always-proceed' : 'request-review',
+                    model: session.getModel(),
+                    effort: session.getEffort()
+                });
+            }
+        });
+    }
+
     private async openSession(backend: AcpSdkBackend, mcpServers: McpServerStdio[]): Promise<string> {
-        const config = { cwd: this.session.path, mcpServers };
+        const config = {
+            cwd: this.session.path,
+            mcpServers,
+            ...(getAssistantRole()
+                ? { _meta: { antigravity: { systemPrompt: { append: AGY_ASSISTANT_SYSTEM_PROMPT } } } }
+                : {})
+        };
         const resumeId = this.session.sessionId;
         if (!resumeId) return backend.newSession(config);
         try {

@@ -22,10 +22,10 @@ export function buildAgyAcpEnv(env: NodeJS.ProcessEnv = process.env): Record<str
  * call that has no allow-rule, ACP sends `session/request_permission` and waits,
  * so request-review sessions get the same approval cards as other ACP agents.
  */
-export function createAgyBackend(): AcpSdkBackend {
+export function createAgyBackend(opts: { addDirs?: string[] } = {}): AcpSdkBackend {
     return new AcpSdkBackend({
         command: 'agy',
-        args: ['acp'],
+        args: ['acp', ...(opts.addDirs ?? []).flatMap((dir) => ['--add-dir', dir])],
         env: buildAgyAcpEnv(),
         flavor: 'agy'
     });

@@ -13,6 +13,7 @@ import { registerSessionConfigRpc } from '@/agent/sessionConfigRpc';
 import { formatMessageWithAttachments } from '@/utils/attachmentFormatter';
 import { getInvokedCwd } from '@/utils/invokedCwd';
 import type { SessionEffort, SessionModel } from '@/api/types';
+import { prependTaskContext, setAssistantRole, type AssistantRole } from '@/claude/assistantRole';
 
 export async function runAgy(opts: {
     startedBy?: 'runner' | 'terminal';
@@ -23,7 +24,10 @@ export async function runAgy(opts: {
     resumeSessionId?: string;
     existingSessionId?: string;
     workingDirectory?: string;
+    /** Run as a workspace user's task assistant. */
+    assistant?: AssistantRole;
 } = {}): Promise<void> {
+    setAssistantRole(opts.assistant ?? null);
     const workingDirectory = opts.workingDirectory ?? getInvokedCwd();
     const startedBy = opts.startedBy ?? 'terminal';
 
@@ -56,6 +60,15 @@ export async function runAgy(opts: {
             effort: opts.effort ?? undefined
         });
     const { api, session } = bootstrap;
+
+    if (opts.assistant) {
+        const { workspaceUserId } = opts.assistant;
+        session.updateMetadata((metadata) => ({
+            ...metadata,
+            role: 'assistant' as const,
+            workspaceUserId
+        }));
+    }
 
     const messageQueue = new MessageQueue2<AgyMode>((mode) => hashObject({
         permissionMode: mode.permissionMode,
@@ -95,7 +108,10 @@ export async function runAgy(opts: {
         };
 
         session.onUserMessage((message, localId) => {
-            const formattedText = formatMessageWithAttachments(message.content.text, message.content.attachments);
+            const formattedText = withTaskContext(
+                formatMessageWithAttachments(message.content.text, message.content.attachments),
+                message.meta?.taskContext
+            );
             // Snapshot the spawn config at ENQUEUE time: a prompt queued while the
             // session runs on model A must not run on B if the user switches the
             // live session model before dequeue.
@@ -151,4 +167,12 @@ export async function runAgy(opts: {
         }
         await lifecycle.cleanupAndExit();
     }
+}
+
+/** A slash command (`/compact`, `/goal …`) must stay first, so its context goes after it. */
+function withTaskContext(text: string, taskContext: string | undefined): string {
+    if (!taskContext?.trim()) return text;
+    return /^\s*\//.test(text)
+        ? `${text}\n\n${prependTaskContext(taskContext, '').trimEnd()}`
+        : prependTaskContext(taskContext, text);
 }

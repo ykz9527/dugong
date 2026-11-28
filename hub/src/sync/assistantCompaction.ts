@@ -21,6 +21,13 @@ export function readCompactThreshold(env: NodeJS.ProcessEnv = process.env): numb
     return Number.isFinite(value) && value > 0 && value < 1 ? value : ASSISTANT_COMPACT_THRESHOLD
 }
 
+/**
+ * agy reports a 1M window but compacts on its own somewhere below it (its
+ * binary carries a 512k checkpoint limit). The hub must get there first, or
+ * the memory pass never runs.
+ */
+const AGY_WINDOW_CAP = 512_000
+
 /** Until a turn result reports the real window: the shared model table, else 200k. */
 export function contextWindowFor(model: string | null | undefined): number {
     return getClaudeContextWindowTokens(model) ?? CLAUDE_DEFAULT_CONTEXT_WINDOW_TOKENS
@@ -107,7 +114,8 @@ export class AssistantCompaction {
             if (tokens > 0) entry.tokens = tokens
             return
         }
-        // Codex reports usage separately, with its own window.
+        // Codex reports usage separately, with its own window; so do ACP
+        // agents such as agy, through the same message.
         const codex = content.content?.type === 'codex' && content.content.data?.type === 'token_count'
             ? codexContext(content.content.data.info)
             : null
@@ -138,7 +146,8 @@ export class AssistantCompaction {
                 await this.deps.send(session.id, ASSISTANT_COMPACT_COMMAND)
                 return
             }
-            const window = entry.window ?? contextWindowFor(session.model)
+            const reported = entry.window ?? contextWindowFor(session.model)
+            const window = session.metadata?.flavor === 'agy' ? Math.min(reported, AGY_WINDOW_CAP) : reported
             if (entry.tokens >= window * (this.deps.threshold ?? ASSISTANT_COMPACT_THRESHOLD)) {
                 entry.phase = 'curating'
                 await this.deps.send(session.id, CURATE_BEFORE_COMPACT_PROMPT(Math.round((entry.tokens / window) * 100)))
@@ -156,13 +165,21 @@ function contextTokens(usage: Record<string, unknown>): number {
     return n('input_tokens') + n('cache_read_input_tokens') + n('cache_creation_input_tokens')
 }
 
-/** `last` is the latest request, which is what is in context; Codex's input count already includes cached input. */
+/**
+ * `last` is the latest request, which is what is in context; Codex's input
+ * count already includes cached input. ACP agents send what is in context
+ * directly as `contextTokens`.
+ */
 function codexContext(info: Record<string, unknown> | undefined): { tokens: number; window?: number } | null {
+    const window = info?.modelContextWindow ?? info?.model_context_window
+    const windowValue = typeof window === 'number' && window > 0 ? window : undefined
+    if (typeof info?.contextTokens === 'number' && info.contextTokens > 0) {
+        return { tokens: info.contextTokens, window: windowValue }
+    }
     const last = info?.last ?? info?.lastTokenUsage ?? info?.last_token_usage
     if (!last || typeof last !== 'object') return null
     const record = last as Record<string, unknown>
     const tokens = record.inputTokens ?? record.input_tokens
     if (typeof tokens !== 'number') return null
-    const window = info?.modelContextWindow ?? info?.model_context_window
-    return { tokens, window: typeof window === 'number' && window > 0 ? window : undefined }
+    return { tokens, window: windowValue }
 }

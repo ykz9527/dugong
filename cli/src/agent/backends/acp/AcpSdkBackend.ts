@@ -328,7 +328,8 @@ export class AcpSdkBackend implements AgentBackend {
         const response = await withRetry(
             () => this.transport!.sendRequest('session/new', {
                 cwd: config.cwd,
-                mcpServers: config.mcpServers
+                mcpServers: config.mcpServers,
+                ...(config._meta ? { _meta: config._meta } : {})
             }),
             {
                 ...AcpSdkBackend.INIT_RETRY_OPTIONS,
@@ -357,7 +358,8 @@ export class AcpSdkBackend implements AgentBackend {
             () => this.transport!.sendRequest('session/load', {
                 sessionId: config.sessionId,
                 cwd: config.cwd,
-                mcpServers: config.mcpServers
+                mcpServers: config.mcpServers,
+                ...(config._meta ? { _meta: config._meta } : {})
             }),
             {
                 ...AcpSdkBackend.INIT_RETRY_OPTIONS,

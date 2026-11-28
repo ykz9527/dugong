@@ -15,4 +15,16 @@ describe('parseAgyCommandOptions', () => {
             'Invalid --hapi-starting-mode'
         )
     })
+
+    it('reads the task assistant flags without disturbing the rest', () => {
+        const options = parseAgyCommandOptions([
+            '--hapi-starting-mode', 'remote', '--started-by', 'runner',
+            '--dugong-role', 'assistant', '--dugong-workspace-user', 'wu-1', '--dugong-add-dir', '/home/u/a',
+            '--existing-session-id', 's-1'
+        ])
+        expect(options.assistant).toEqual({ workspaceUserId: 'wu-1', addDirs: ['/home/u/a'] })
+        expect(options.existingSessionId).toBe('s-1')
+        expect(options.startedBy).toBe('runner')
+        expect(parseAgyCommandOptions([]).assistant).toBeUndefined()
+    })
 })

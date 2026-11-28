@@ -16,6 +16,8 @@ export type McpServerStdio = {
 export type AgentSessionConfig = {
     cwd: string;
     mcpServers: McpServerStdio[];
+    /** Agent-specific ACP extension data for session/new and session/load. */
+    _meta?: Record<string, unknown>;
 };
 
 export type PromptContent = {

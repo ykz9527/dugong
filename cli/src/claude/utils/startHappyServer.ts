@@ -31,9 +31,23 @@ import {
 } from '@hapi/protocol/sessionCitation'
 import { PingPeerError, formatInspectPeerReport, formatPeerSessionsList, inspectPeer, listPeerSessions, peerListFetchLimit, pingPeer } from "@/modules/pingPeer/pingPeer";
 
+export type HapiToolResult = { content: Array<{ type: 'text'; text: string }>; isError: boolean };
+
+/**
+ * Runs a confirm-first assistant tool (`ASSISTANT_CONFIRM_TOOLS`): decides
+ * whether and when `run` happens. For agents that do not ask before a tool
+ * call themselves; Claude and Codex ask in their own permission flow.
+ */
+export type ConfirmToolGate = (
+    name: string,
+    args: Record<string, unknown>,
+    run: () => Promise<HapiToolResult>
+) => Promise<HapiToolResult>;
+
 type StartHappyServerOptions = {
     /** Register the task assistant's memory and task tools. */
     assistant?: boolean;
+    confirmTool?: ConfirmToolGate;
     emitTitleSummary?: boolean;
     enableChangeTitle?: boolean;
     skillLookup?: {
@@ -74,11 +88,26 @@ export function toClaudeAllowedHapiMcpTools(toolNames: string[], options: { assi
         .map((toolName) => `mcp__hapi__${toolName}`);
 }
 
+type ToolHandler = (args: Record<string, unknown>, extra: unknown) => Promise<HapiToolResult>;
+
+/** Route every confirm-first tool registered on `mcp` from here on through `gate`. */
+function gateConfirmTools(mcp: McpServer, gate: ConfirmToolGate): void {
+    const confirm = new Set<string>(ASSISTANT_CONFIRM_TOOLS);
+    const register = mcp.registerTool.bind(mcp) as (name: string, config: unknown, handler: ToolHandler) => unknown;
+    const gated = (name: string, config: unknown, handler: ToolHandler) => register(
+        name,
+        config,
+        confirm.has(name) ? (args, extra) => gate(name, args, () => handler(args, extra)) : handler
+    );
+    (mcp as unknown as { registerTool: typeof gated }).registerTool = gated;
+}
+
 function createHapiMcpServer(
     client: ApiSessionClient,
     emitTitleSummary: boolean,
     enableChangeTitle: boolean,
-    skillLookup: StartHappyServerOptions['skillLookup']
+    skillLookup: StartHappyServerOptions['skillLookup'],
+    confirmTool?: ConfirmToolGate
 ): McpServer {
     const handler = async (title: string) => {
         logger.debug('[hapiMCP] Changing title to:', title);
@@ -101,6 +130,9 @@ function createHapiMcpServer(
         name: "dugong MCP",
         version: "1.0.0",
     });
+    if (confirmTool) {
+        gateConfirmTools(mcp, confirmTool);
+    }
 
     const changeTitleInputSchema: z.ZodTypeAny = z.object({
         title: z.string().describe('The new title for the chat session'),
@@ -516,7 +548,7 @@ export async function startHappyServer(client: ApiSessionClient, options: StartH
     const mcps = new Map<string, McpServer>();
 
     const createMcpTransport = () => {
-        const mcp = createHapiMcpServer(client, emitTitleSummary, enableChangeTitle, options.skillLookup);
+        const mcp = createHapiMcpServer(client, emitTitleSummary, enableChangeTitle, options.skillLookup, options.confirmTool);
         if (options.assistant) {
             // `<any, any>` as for the tools above: the SDK types its schemas
             // against its own copy of zod.

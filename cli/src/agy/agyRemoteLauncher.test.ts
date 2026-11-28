@@ -10,6 +10,8 @@ vi.mock('@/ui/ink/RemoteModeDisplay', () => ({ RemoteModeDisplay: () => null }))
 vi.mock('@/ui/logger', () => ({ logger: { debug: vi.fn(), warn: vi.fn() } }));
 
 import { AgyRemoteLauncher } from './agyRemoteLauncher';
+import { setAssistantRole } from '@/claude/assistantRole';
+import type { ConfirmToolGate } from '@/claude/utils/startHappyServer';
 
 /** The options `agy acp` 1.5.16 sends: no allow_always. */
 const AGY_OPTIONS = [
@@ -135,6 +137,7 @@ function createHarness(opts: {
     const launcher = new AgyRemoteLauncher(session as never, {
         createBackend: () => backend as unknown as AcpSdkBackend,
         readTitle: async () => null,
+        hasGrant: async () => false,
         buildMcpBridge
     });
 
@@ -147,6 +150,8 @@ function createHarness(opts: {
         mcpStop,
         expectedMcpServers: [{ name: 'hapi', command: 'dugong', args: mcpArgs, env: [] }],
         get agentState() { return agentState; },
+        /** The confirm-first gate the launcher handed the MCP server, if any. */
+        confirmTool: () => (buildMcpBridge.mock.calls[0] as unknown as [unknown, { confirmTool?: ConfirmToolGate }] | undefined)?.[1]?.confirmTool,
         setPermissionMode: (mode: PermissionMode) => { permissionMode = mode; },
         push: (text: string) => queue.push(text, opts.mode ?? { permissionMode }),
         close: () => queue.close(),
@@ -289,5 +294,70 @@ describe('AgyRemoteLauncher session setup', () => {
             message: 'agy could not resume this conversation; starting a new one.'
         });
         expect(h.mcpStop).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('AgyRemoteLauncher as a task assistant', () => {
+    const hubToolRequest = (id: string, tool: string): PermissionRequest => ({
+        id,
+        sessionId: 'conv-new',
+        toolCallId: id,
+        title: `Run mcp_hapi_${tool}`,
+        kind: 'other',
+        rawInput: { taskId: 't-1' },
+        options: AGY_OPTIONS
+    });
+
+    it('gives agy the assistant tools and prompt, and lets agy\'s own asks for hub tools through', async () => {
+        setAssistantRole({ workspaceUserId: 'wu-1', addDirs: [] });
+        try {
+            const h = createHarness({ turns: [[hubToolRequest('t1', 'memory_read')]] });
+            h.push('hello');
+            h.close();
+            await h.launcher.launch();
+
+            expect(h.buildMcpBridge).toHaveBeenCalledWith(h.session.client, expect.objectContaining({
+                assistant: true,
+                confirmTool: expect.any(Function)
+            }));
+            const config = h.backend.newSession.mock.calls[0] as unknown as [{ _meta?: { antigravity?: { systemPrompt?: { append?: string } } } }];
+            const prompt = config[0]._meta?.antigravity?.systemPrompt?.append ?? '';
+            expect(prompt).toContain('mcp_hapi_<name>');
+            expect(prompt).toContain("You are this person's task assistant");
+            // Answered without a card: the confirm-first ones ask in the server instead.
+            expect(h.answers).toEqual([{ id: 't1', outcome: { outcome: 'selected', optionId: 'allow' } }]);
+        } finally {
+            setAssistantRole(null);
+        }
+    });
+
+    it('keeps a confirm-first ask open across the end of a turn', async () => {
+        setAssistantRole({ workspaceUserId: 'wu-1', addDirs: [] });
+        try {
+            const h = createHarness({ turns: [[], []] });
+            h.push('first');
+            const run = h.launcher.launch();
+            await vi.waitFor(() => expect(h.backend.prompt).toHaveBeenCalledTimes(1));
+
+            const action = vi.fn(async () => ({ content: [{ type: 'text' as const, text: 'moved' }], isError: false }));
+            const result = h.confirmTool()!('task_move', { taskId: 't-1' }, action);
+            await h.nextPending();
+            const [id, request] = Object.entries(h.agentState.requests ?? {})[0];
+            expect(request).toMatchObject({ tool: 'mcp__hapi__task_move', arguments: { taskId: 't-1' } });
+
+            // Another turn ends while the person has not answered yet.
+            h.push('second');
+            await vi.waitFor(() => expect(h.backend.prompt).toHaveBeenCalledTimes(2));
+            await vi.waitFor(() => expect(h.session.sendSessionEvent).toHaveBeenCalledTimes(2));
+            expect(h.agentState.requests?.[id]).toBeDefined();
+
+            await h.answer({ id, approved: true, decision: 'approved' });
+            expect(await result).toEqual({ content: [{ type: 'text', text: 'moved' }], isError: false });
+            expect(action).toHaveBeenCalledTimes(1);
+            h.close();
+            await run;
+        } finally {
+            setAssistantRole(null);
+        }
     });
 });

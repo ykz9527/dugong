@@ -1510,6 +1510,7 @@ export default {
   'assistant.session.loading': 'Loading…',
   'assistant.session.error': 'Could not load the assistant: {error}',
   'assistant.session.retry': 'Retry',
+  'assistant.agent.agyNote': 'agy: its own commands and edits follow agy\'s shared approval setting; actions on other tasks are still confirmed here.',
   'assistant.agent.error': 'Could not switch agent: {error}',
   'assistant.machine.hint': 'Machine the assistant runs on. Each machine keeps its own conversation; memory, questions and permissions are shared.',
   'assistant.machine.auto': 'Auto',

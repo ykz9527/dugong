@@ -157,6 +157,31 @@ describe('AssistantCompaction', () => {
         expect(sent[0].text).toContain('about 75%')
     })
 
+    it('reads what an ACP agent says is in context, and curates agy before its own compaction', async () => {
+        session = { ...session, model: 'gemini-4-neon', metadata: { ...session.metadata!, flavor: 'agy' } } as Session
+        const acpUsage = (contextTokens: number) => ({
+            type: 'message-received',
+            sessionId: session.id,
+            message: {
+                id: `a-${Math.random()}`, seq: 1, localId: null, createdAt: 0,
+                content: { role: 'agent', content: { type: 'codex', data: { type: 'token_count', info: {
+                    total: { inputTokens: 9_000_000, outputTokens: 10 },
+                    contextTokens, modelContextWindow: 1_048_576
+                } } } }
+            }
+        }) as unknown as SyncEvent
+        compaction.handle(acpUsage(300_000))
+        compaction.handle(ready())
+        await flush()
+        expect(sent).toHaveLength(0)
+
+        // 70% of agy's 512k cap, well under 70% of the 1M it reports.
+        compaction.handle(acpUsage(400_000))
+        compaction.handle(ready())
+        await flush()
+        expect(sent[0].text).toContain('about 78%')
+    })
+
     it('knows the long-context model has a bigger window', () => {
         expect(contextWindowFor('claude-sonnet-4-6')).toBe(200_000)
         expect(contextWindowFor('opus[1m]')).toBe(1_000_000)

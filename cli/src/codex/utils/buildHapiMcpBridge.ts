@@ -11,6 +11,7 @@ import type { ApiSessionClient } from '@/api/apiSession';
 import { exportHapiSessionEnv } from '@/agent/hapiSessionEnv';
 import { ASSISTANT_CONFIRM_TOOLS } from '@hapi/protocol';
 import { ASSISTANT_TOOL_NAMES } from '@/claude/utils/assistantTools';
+import type { ConfirmToolGate } from '@/claude/utils/startHappyServer';
 
 /**
  * MCP server entry configuration.
@@ -54,6 +55,8 @@ export interface HapiMcpBridgeOptions {
     };
     /** Register the task assistant's memory and task tools. */
     assistant?: boolean;
+    /** Ask for confirm-first assistant tools in the server; see `ConfirmToolGate`. */
+    confirmTool?: ConfirmToolGate;
 }
 
 /**
@@ -85,7 +88,8 @@ export async function buildHapiMcpBridge(
         emitTitleSummary: options.emitTitleSummary,
         enableChangeTitle: options.enableChangeTitle,
         skillLookup: options.skillLookup,
-        assistant: options.assistant
+        assistant: options.assistant,
+        confirmTool: options.confirmTool
     });
     const bridgeCommand = getHappyCliCommand([
         'mcp',

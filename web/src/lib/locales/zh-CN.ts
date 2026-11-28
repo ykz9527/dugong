@@ -1514,6 +1514,7 @@ export default {
   'assistant.session.loading': '加载中…',
   'assistant.session.error': '无法加载助手：{error}',
   'assistant.session.retry': '重试',
+  'assistant.agent.agyNote': 'agy：它自己的命令和改文件按 agy 的共享设置审批；对其他任务的操作仍在这里确认。',
   'assistant.agent.error': '无法切换智能体：{error}',
   'assistant.machine.hint': '助手运行的机器。每台机器各有自己的对话，记忆、问题和授权共用。',
   'assistant.machine.auto': '自动',

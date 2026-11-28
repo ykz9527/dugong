@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { buildCliArgs, classifyRecoveredProcessGeneration, createSpawnDeduplicator, recoverSpawnDedupe, releaseRecoveredSpawnDedupe } from './run'
 
 describe('buildCliArgs', () => {
-    it('marks a task assistant spawn and passes its directories (claude and codex)', () => {
+    it('marks a task assistant spawn and passes its directories (claude, codex and agy)', () => {
         const options = {
             directory: '/home/u/.hapi/assistant/wu-1',
             assistant: { workspaceUserId: 'wu-1', addDirs: ['/home/u/a', '/home/u/b'] }
@@ -14,6 +14,7 @@ describe('buildCliArgs', () => {
         const flags = '--dugong-role assistant --dugong-workspace-user wu-1 --dugong-add-dir /home/u/a --dugong-add-dir /home/u/b'
         expect(buildCliArgs('claude', options).join(' ')).toContain(flags)
         expect(buildCliArgs('codex', options).join(' ')).toContain(flags)
+        expect(buildCliArgs('agy', options).join(' ')).toContain(flags)
         expect(buildCliArgs('cursor', options)).not.toContain('--dugong-role')
     })
 

@@ -1635,9 +1635,9 @@ export function buildCliArgs(
       }
     }
   }
-  // Task assistant: Claude or Codex. A reopen spawns again with the same
+  // Task assistant: Claude, Codex or agy. A reopen spawns again with the same
   // `assistant` options, so the role survives a resume.
-  if (options.assistant && (agentCommand === 'claude' || agentCommand === 'codex')) {
+  if (options.assistant && (agentCommand === 'claude' || agentCommand === 'codex' || agentCommand === 'agy')) {
     args.push('--dugong-role', 'assistant', '--dugong-workspace-user', options.assistant.workspaceUserId);
     for (const dir of options.assistant.addDirs) {
       args.push('--dugong-add-dir', dir);

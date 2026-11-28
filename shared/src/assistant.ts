@@ -235,7 +235,7 @@ export type AssistantSessionResponse = {
 }
 
 /** The coding agents that can back the assistant; each person picks one. */
-export const ASSISTANT_AGENTS = ['claude', 'codex'] as const
+export const ASSISTANT_AGENTS = ['claude', 'codex', 'agy'] as const
 export type AssistantAgent = typeof ASSISTANT_AGENTS[number]
 export const DEFAULT_ASSISTANT_AGENT: AssistantAgent = 'claude'
 
