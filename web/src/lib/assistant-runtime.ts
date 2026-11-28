@@ -12,8 +12,7 @@ import { safeStringify } from '@hapi/protocol'
 import { renderEventLabel } from '@/chat/presentation'
 import type { ChatBlock, CliOutputBlock, CodexReview, RoundSummary, UsageData } from '@/chat/types'
 import type { AgentEvent, ToolCallBlock } from '@/chat/types'
-import type { ToolGroupBlock, VisibleChatBlock } from '@/chat/toolGroups'
-import { visibleBlockRole } from '@/chat/toolGroups'
+import { getToolGroupItems, visibleBlockRole, type ToolGroupBlock, type VisibleChatBlock } from '@/chat/toolGroups'
 import type { AttachmentMetadata, MessageStatus as HappyMessageStatus, Session } from '@/types/api'
 
 /**
@@ -87,8 +86,11 @@ export function getBlockPresentationTimestamp(block: VisibleChatBlock): number {
         return block.invokedAt ?? block.createdAt
     }
     if (block.kind === 'tool-group') {
-        return block.tools.reduce(
-            (latest, tool) => Math.max(latest, tool.tool.completedAt ?? tool.createdAt),
+        return getToolGroupItems(block).reduce(
+            (latest, item) => Math.max(
+                latest,
+                item.kind === 'tool-call' ? (item.tool.completedAt ?? item.createdAt) : item.createdAt
+            ),
             block.createdAt
         )
     }
@@ -148,13 +150,13 @@ type TurnSource = {
 // kinds map to a single source.
 function turnSourcesFromBlock(block: VisibleChatBlock): TurnSource[] {
     if (block.kind === 'tool-group') {
-        return block.tools.map((tool) => ({
-            localId: tool.localId,
-            invokedAt: tool.invokedAt ?? null,
-            durationMs: tool.durationMs,
-            model: tool.model ?? null,
-            usage: tool.usage,
-            createdAt: tool.createdAt
+        return getToolGroupItems(block).map((item) => ({
+            localId: item.localId,
+            invokedAt: item.invokedAt ?? null,
+            durationMs: item.durationMs,
+            model: item.model ?? null,
+            usage: item.usage,
+            createdAt: item.createdAt
         }))
     }
     if (
@@ -461,8 +463,15 @@ function getAssistantBlockSignatures(blocks: readonly VisibleChatBlock[]): strin
     return blocks
         .filter((block) => visibleBlockRole(block) === 'assistant')
         .map((block) => {
-            const text = 'text' in block ? block.text : ''
-            const toolCount = block.kind === 'tool-group' ? block.tools.length : 0
+            const text = 'text' in block
+                ? block.text
+                : block.kind === 'tool-group'
+                    ? (() => {
+                        const last = getToolGroupItems(block).at(-1)
+                        return last && last.kind === 'agent-reasoning' ? last.text : ''
+                    })()
+                    : ''
+            const toolCount = block.kind === 'tool-group' ? getToolGroupItems(block).length : 0
             const textMarker = text.length <= 64 ? text : `${text.length}:${text.slice(-32)}`
             return `${block.id}:${getBlockPresentationTimestamp(block)}:${textMarker}:${toolCount}`
         })

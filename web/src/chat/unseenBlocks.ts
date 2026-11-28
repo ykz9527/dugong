@@ -1,4 +1,4 @@
-import { isToolGroupBlock, visibleBlockRole, type VisibleChatBlock } from '@/chat/toolGroups'
+import { getToolGroupItems, isToolGroupBlock, visibleBlockRole, type VisibleChatBlock } from '@/chat/toolGroups'
 
 /**
  * Snapshot of the blocks the user had already seen when they scrolled away
@@ -46,7 +46,11 @@ function isKnownBlock(block: VisibleChatBlock, watermark: UnseenWatermark): bool
     // `tool-group:<firstToolId>` (see createToolGroupId in toolGroups.ts).
     // Match on the member ids so that absorption doesn't look like new content.
     return isToolGroupBlock(block)
-        && (watermark.ids.has(block.firstToolId) || watermark.ids.has(block.lastToolId))
+        && (
+            watermark.ids.has(block.firstToolId)
+            || watermark.ids.has(block.lastToolId)
+            || getToolGroupItems(block).some((item) => watermark.ids.has(item.id))
+        )
 }
 
 /**

@@ -279,9 +279,9 @@ describe('responsive settings pages', () => {
         expect(screen.getByText('Tool group background')).toBeInTheDocument()
     })
 
-    it('renders the default-collapse switch for Codex exploration groups', () => {
+    it('renders the default-collapse switch for tool activity groups', () => {
         renderPage(<SettingsChatPage />)
-        const toggle = screen.getByRole('checkbox', { name: 'Collapse explored tool groups by default' })
+        const toggle = screen.getByRole('checkbox', { name: 'Collapse tool activity by default' })
         expect(toggle).toBeChecked()
         fireEvent.click(toggle)
         expect(setCodexExplorationCollapsed).toHaveBeenCalledWith(false)

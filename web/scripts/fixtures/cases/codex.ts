@@ -312,7 +312,7 @@ export const codexCases: FixtureCase[] = [
     },
     {
         name: 'codex-exploration-tool-group',
-        description: 'Codex exploration grouping family: consecutive CodexBash calls whose command_actions are all read/listFiles/search (and command_source is not userShell) collapse into one tool-group in visibleBlocks — a family boundary distinct from the default read/search grouping.',
+        description: 'Codex tool grouping: three consecutive CodexBash calls (read, search, and general command) collapse into one tool-group in visibleBlocks.',
         messages: [
             wireMessage({
                 id: 'msg-user-571',
@@ -421,6 +421,55 @@ export const codexCases: FixtureCase[] = [
                             },
                             is_error: false,
                             id: 'a4d6f7b8-1fbc-4c8d-8ef4-e8f9a0b1c575'
+                        }
+                    }
+                }
+            }),
+            wireMessage({
+                id: 'msg-codex-576',
+                seq: 6,
+                createdAt: T0 + 4_900,
+                content: {
+                    role: 'agent',
+                    content: {
+                        type: 'codex',
+                        data: {
+                            type: 'tool-call',
+                            name: 'CodexBash',
+                            callId: 'call_expl_git01',
+                            input: {
+                                command: ['bash', '-lc', 'git log -n 3 --oneline'],
+                                cwd: '/repo',
+                                command_source: 'agent',
+                                command_actions: [
+                                    {
+                                        type: 'unknown',
+                                        command: 'git log -n 3 --oneline'
+                                    }
+                                ]
+                            },
+                            id: 'b5e7a8c9-2acd-4d9e-9fa5-f9a0b1c2d576'
+                        }
+                    }
+                }
+            }),
+            wireMessage({
+                id: 'msg-codex-577',
+                seq: 7,
+                createdAt: T0 + 5_500,
+                content: {
+                    role: 'agent',
+                    content: {
+                        type: 'codex',
+                        data: {
+                            type: 'tool-call-result',
+                            callId: 'call_expl_git01',
+                            output: {
+                                exit_code: 0,
+                                stdout: 'a1b2c3d feat: cursor pagination'
+                            },
+                            is_error: false,
+                            id: 'c6f8b9da-3bde-4eaf-8ab6-a0b1c2d3e577'
                         }
                     }
                 }

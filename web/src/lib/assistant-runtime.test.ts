@@ -853,7 +853,8 @@ describe('aggregateResponseGroups', () => {
         const visible = buildVisibleChatBlocks([
             userText('u1'),
             firstTool,
-            toolCall('grep', { localId: 'L1' })
+            toolCall('grep', { localId: 'L1' }),
+            toolCall('bash', { localId: 'L1' })
         ], { hasMoreMessages: false })
         const group = visible.find(block => block.kind === 'tool-group')
         if (!group || group.kind !== 'tool-group') throw new Error('Expected tool group')

@@ -1,5 +1,5 @@
 {
-    "description": "Codex exploration grouping family: consecutive CodexBash calls whose command_actions are all read/listFiles/search (and command_source is not userShell) collapse into one tool-group in visibleBlocks — a family boundary distinct from the default read/search grouping.",
+    "description": "Codex tool grouping: three consecutive CodexBash calls (read, search, and general command) collapse into one tool-group in visibleBlocks.",
     "expected": {
         "blocks": [
             {
@@ -72,6 +72,36 @@
                     },
                     "state": "completed"
                 }
+            },
+            {
+                "createdAt": 1755000004900,
+                "id": "call_expl_git01",
+                "kind": "tool-call",
+                "localId": null,
+                "tool": {
+                    "id": "call_expl_git01",
+                    "input": {
+                        "command": [
+                            "bash",
+                            "-lc",
+                            "git log -n 3 --oneline"
+                        ],
+                        "command_actions": [
+                            {
+                                "command": "git log -n 3 --oneline",
+                                "type": "unknown"
+                            }
+                        ],
+                        "command_source": "agent",
+                        "cwd": "/repo"
+                    },
+                    "name": "CodexBash",
+                    "result": {
+                        "exit_code": 0,
+                        "stdout": "a1b2c3d feat: cursor pagination"
+                    },
+                    "state": "completed"
+                }
             }
         ],
         "hasReadyEvent": false,
@@ -89,7 +119,7 @@
                 "firstToolId": "call_expl_read01",
                 "id": "tool-group:call_expl_read01",
                 "kind": "tool-group",
-                "lastToolId": "call_expl_search01",
+                "lastToolId": "call_expl_git01",
                 "tools": [
                     {
                         "createdAt": 1755000001500,
@@ -151,6 +181,36 @@
                             "result": {
                                 "exit_code": 0,
                                 "stdout": "web/src/lib/message-window-store.ts:412:function buildCursor(page) {"
+                            },
+                            "state": "completed"
+                        }
+                    },
+                    {
+                        "createdAt": 1755000004900,
+                        "id": "call_expl_git01",
+                        "kind": "tool-call",
+                        "localId": null,
+                        "tool": {
+                            "id": "call_expl_git01",
+                            "input": {
+                                "command": [
+                                    "bash",
+                                    "-lc",
+                                    "git log -n 3 --oneline"
+                                ],
+                                "command_actions": [
+                                    {
+                                        "command": "git log -n 3 --oneline",
+                                        "type": "unknown"
+                                    }
+                                ],
+                                "command_source": "agent",
+                                "cwd": "/repo"
+                            },
+                            "name": "CodexBash",
+                            "result": {
+                                "exit_code": 0,
+                                "stdout": "a1b2c3d feat: cursor pagination"
                             },
                             "state": "completed"
                         }
@@ -289,6 +349,61 @@
                 "id": "msg-codex-575",
                 "localId": null,
                 "seq": 5
+            },
+            {
+                "content": {
+                    "content": {
+                        "data": {
+                            "callId": "call_expl_git01",
+                            "id": "b5e7a8c9-2acd-4d9e-9fa5-f9a0b1c2d576",
+                            "input": {
+                                "command": [
+                                    "bash",
+                                    "-lc",
+                                    "git log -n 3 --oneline"
+                                ],
+                                "command_actions": [
+                                    {
+                                        "command": "git log -n 3 --oneline",
+                                        "type": "unknown"
+                                    }
+                                ],
+                                "command_source": "agent",
+                                "cwd": "/repo"
+                            },
+                            "name": "CodexBash",
+                            "type": "tool-call"
+                        },
+                        "type": "codex"
+                    },
+                    "role": "agent"
+                },
+                "createdAt": 1755000004900,
+                "id": "msg-codex-576",
+                "localId": null,
+                "seq": 6
+            },
+            {
+                "content": {
+                    "content": {
+                        "data": {
+                            "callId": "call_expl_git01",
+                            "id": "c6f8b9da-3bde-4eaf-8ab6-a0b1c2d3e577",
+                            "is_error": false,
+                            "output": {
+                                "exit_code": 0,
+                                "stdout": "a1b2c3d feat: cursor pagination"
+                            },
+                            "type": "tool-call-result"
+                        },
+                        "type": "codex"
+                    },
+                    "role": "agent"
+                },
+                "createdAt": 1755000005500,
+                "id": "msg-codex-577",
+                "localId": null,
+                "seq": 7
             }
         ],
         "options": {

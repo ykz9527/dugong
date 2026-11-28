@@ -1,8 +1,8 @@
 import { useCallback, useState } from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ToolCallBlock } from '@/chat/types'
-import type { ToolGroupBlock } from '@/chat/toolGroups'
+import type { AgentReasoningBlock, ToolCallBlock } from '@/chat/types'
+import { getToolGroupActionKind, type ToolGroupActionKind, type ToolGroupBlock, type ToolGroupItem } from '@/chat/toolGroups'
 import {
     HappyChatProvider,
     type OlderHistoryLoadResult
@@ -10,7 +10,12 @@ import {
 import { getToolGroupTiming, ToolGroupCard } from '@/components/ToolCard/ToolGroupCard'
 import { I18nProvider } from '@/lib/i18n-context'
 
-function makeToolBlock(id: string, name: string, input: unknown = {}): ToolCallBlock {
+function makeToolBlock(
+    id: string,
+    name: string,
+    input: unknown = {},
+    state: ToolCallBlock['tool']['state'] = 'completed'
+): ToolCallBlock {
     return {
         kind: 'tool-call',
         id,
@@ -20,11 +25,11 @@ function makeToolBlock(id: string, name: string, input: unknown = {}): ToolCallB
         tool: {
             id,
             name,
-            state: 'completed',
+            state,
             input,
             createdAt: 1,
             startedAt: 1,
-            completedAt: 2,
+            completedAt: state === 'running' ? null : 2,
             execStartedAt: null,
             execCompletedAt: null,
             description: null,
@@ -35,11 +40,33 @@ function makeToolBlock(id: string, name: string, input: unknown = {}): ToolCallB
     }
 }
 
+function makeReasoningBlock(id: string, text: string): AgentReasoningBlock {
+    return {
+        kind: 'agent-reasoning',
+        id,
+        localId: null,
+        createdAt: 1,
+        text,
+    }
+}
+
 function makeGroup(overrides: Partial<ToolGroupBlock> = {}): ToolGroupBlock {
     const tools = overrides.tools ?? [
         makeToolBlock('read-1', 'Read', { file_path: 'repo/src/a.ts' }),
-        makeToolBlock('bash-1', 'Bash', { command: 'bun test' })
+        makeToolBlock('bash-1', 'Bash', { command: 'bun test' }),
+        makeToolBlock('bash-2', 'Bash', { command: 'git status' }),
     ]
+    const countsByKind: Record<ToolGroupActionKind, number> = {
+        read: 0,
+        search: 0,
+        command: 0,
+        mutation: 0,
+        web: 0,
+        other: 0,
+    }
+    for (const tool of tools) {
+        countsByKind[getToolGroupActionKind(tool)] += 1
+    }
     return {
         kind: 'tool-group',
         id: 'tool-group:read-1',
@@ -48,27 +75,21 @@ function makeGroup(overrides: Partial<ToolGroupBlock> = {}): ToolGroupBlock {
         firstToolId: tools[0].id,
         lastToolId: tools[tools.length - 1].id,
         tools,
+        items: overrides.items ?? tools,
         defaultOpen: false,
         historyState: 'complete',
         needsOlderHistory: false,
         summary: {
             totalTools: tools.length,
-            countsByKind: {
-                read: 1,
-                search: 0,
-                command: 1,
-                mutation: 0,
-                web: 0,
-                other: 0,
-            },
+            countsByKind,
             fileTargets: ['repo/src/a.ts'],
-            commandTargets: ['bun test'],
+            commandTargets: ['bun test', 'git status'],
             searchTargets: [],
             urlTargets: [],
             otherTargets: [],
-            errorCount: 0,
-            runningCount: 0,
-            pendingCount: 0,
+            errorCount: tools.filter((tool) => tool.tool.state === 'error').length,
+            runningCount: tools.filter((tool) => tool.tool.state === 'running').length,
+            pendingCount: tools.filter((tool) => tool.tool.state === 'pending').length,
         },
         ...overrides,
     }
@@ -108,23 +129,21 @@ describe('ToolGroupCard', () => {
         cleanup()
     })
 
-    it('renders a collapsed target-first header', () => {
+    it('renders a collapsed action-summary header with latest tool preview', () => {
         const view = renderCard(makeGroup())
 
-        expect(screen.getByRole('button', { name: /inspect a\.ts/i })).toHaveAttribute('aria-expanded', 'false')
-        expect(screen.getByText('Run 1 · Read 1')).toBeInTheDocument()
-        expect(screen.queryByText('2 actions')).not.toBeInTheDocument()
-        expect(screen.getByText('Run 1 · Read 1')).toHaveClass('text-xs', 'font-normal', 'text-[var(--app-hint)]')
+        const toggle = screen.getByRole('button', { name: /ran 2 commands · read 1 file/i })
+        expect(toggle).toHaveAttribute('aria-expanded', 'false')
+        expect(screen.getByText('git status')).toBeInTheDocument()
         expect(screen.queryByText('src/a.ts')).not.toBeInTheDocument()
-        expect(screen.queryByText('bun test')).not.toBeInTheDocument()
 
         // The tool-group colour setting tints the opened body of nested rows.
         expect(view.container.innerHTML).not.toContain('bg-[var(--app-tool-group-bg)]')
-        fireEvent.click(screen.getByRole('button', { name: /inspect a\.ts/i }))
+        fireEvent.click(toggle)
         expect(view.container.innerHTML).toContain('bg-[var(--app-tool-group-bg)]')
     })
 
-    it('derives completed group wall-clock timing from the earliest start and latest finish', () => {
+    it('derives completed group timing from exec timestamps when present, falling back to hub clocks', () => {
         const first = makeToolBlock('read-1', 'Read')
         first.tool.startedAt = 1_000
         first.tool.completedAt = 2_000
@@ -138,28 +157,44 @@ describe('ToolGroupCard', () => {
             durationMs: 3_000,
             running: false,
         })
+
+        // Prefer execution-machine timestamps when both tools carry complete exec pairs.
+        first.tool.execStartedAt = 10_000
+        first.tool.execCompletedAt = 10_500
+        second.tool.execStartedAt = 10_600
+        second.tool.execCompletedAt = 11_800
+        expect(getToolGroupTiming([first, second], 20_000)).toEqual({
+            startedAt: 10_000,
+            completedAt: 11_800,
+            durationMs: 1_800,
+            running: false,
+        })
+
+        // Tolerate individual missing completedAt instead of blanking the whole group.
+        const missingEnd = makeToolBlock('read-2', 'Read')
+        missingEnd.tool.startedAt = 1_000
+        missingEnd.tool.completedAt = null
+        const withEnd = makeToolBlock('bash-2', 'Bash')
+        withEnd.tool.startedAt = 1_200
+        withEnd.tool.completedAt = 3_500
+        expect(getToolGroupTiming([missingEnd, withEnd], 10_000).durationMs).toBe(2_500)
     })
 
-    it('shows live duration and a spinner on the collapsed row, and group start once opened, while running', () => {
+    it('shows live duration, spinner, and running tool preview while running', () => {
         const startedAt = Date.now() - 5_000
-        const completed = makeToolBlock('read-1', 'Read')
+        const completed = makeToolBlock('read-1', 'Read', { file_path: 'repo/src/a.ts' })
         completed.tool.startedAt = startedAt
         completed.tool.completedAt = startedAt + 1_000
-        const running = makeToolBlock('bash-1', 'Bash')
-        running.tool.state = 'running'
+        const running = makeToolBlock('bash-1', 'Bash', { command: 'bun run test' }, 'running')
         running.tool.startedAt = startedAt + 1_000
-        running.tool.completedAt = null
+        const running2 = makeToolBlock('bash-2', 'Bash', { command: 'bun run build' }, 'running')
+        running2.tool.startedAt = startedAt + 1_500
 
-        const group = makeGroup({
-            tools: [completed, running],
-            summary: {
-                ...makeGroup().summary,
-                runningCount: 1,
-            },
-        })
-        const view = renderCard(group)
+        const view = renderCard(makeGroup({ tools: [completed, running, running2] }))
 
         expect(within(view.container).getByLabelText('Running')).toBeInTheDocument()
+        expect(screen.getByText('2 running')).toBeInTheDocument()
+        expect(screen.getByText(/bun run build/)).toBeInTheDocument()
         expect(screen.getByText(/^\d+\.\ds$/)).toBeInTheDocument()
         expect(screen.queryByText('Started')).not.toBeInTheDocument()
 
@@ -169,6 +204,17 @@ describe('ToolGroupCard', () => {
         expect(screen.queryByText('Finished')).not.toBeInTheDocument()
     })
 
+    it('highlights failed count in red and previews the failed tool over later completed tools', () => {
+        const first = makeToolBlock('read-1', 'Read', { file_path: 'repo/src/a.ts' })
+        const failed = makeToolBlock('bash-fail', 'Bash', { command: 'bun test --fail' }, 'error')
+        const last = makeToolBlock('read-2', 'Read', { file_path: 'repo/src/b.ts' })
+
+        renderCard(makeGroup({ tools: [first, failed, last] }))
+
+        expect(screen.getByText('1 failed')).toBeInTheDocument()
+        expect(screen.getByText('bun test --fail')).toBeInTheDocument()
+    })
+
     it('shows final duration on the collapsed row and full timing once opened after every tool finishes', () => {
         const startedAt = Date.now() - 4_000
         const first = makeToolBlock('read-1', 'Read')
@@ -176,9 +222,12 @@ describe('ToolGroupCard', () => {
         first.tool.completedAt = startedAt + 1_000
         const second = makeToolBlock('bash-1', 'Bash')
         second.tool.startedAt = startedAt + 1_000
-        second.tool.completedAt = startedAt + 4_000
+        second.tool.completedAt = startedAt + 2_500
+        const third = makeToolBlock('bash-2', 'Bash')
+        third.tool.startedAt = startedAt + 2_500
+        third.tool.completedAt = startedAt + 4_000
 
-        const view = renderCard(makeGroup({ tools: [first, second] }))
+        const view = renderCard(makeGroup({ tools: [first, second, third] }))
 
         expect(screen.getByText('4.0s')).toBeInTheDocument()
         expect(screen.queryByText('Started')).not.toBeInTheDocument()
@@ -190,38 +239,44 @@ describe('ToolGroupCard', () => {
         expect(screen.getAllByText('4.0s').length).toBeGreaterThan(0)
     })
 
-    it('expands to show compact rows and opens a detail dialog per row', async () => {
-        const view = renderCard(makeGroup())
-        const groupToggle = within(view.container).getByRole('button', { name: /inspect a\.ts/i })
+    it('expands to show interleaved tools and inline-expandable reasoning rows, and opens tool detail dialog', async () => {
+        const t1 = makeToolBlock('read-1', 'Read', { file_path: 'repo/src/a.ts' })
+        const r1 = makeReasoningBlock('reason-1', '**Inspecting imports**\n\nDetailed reasoning body here.')
+        const t2 = makeToolBlock('bash-1', 'Bash', { command: 'bun test' })
+        const items: ToolGroupItem[] = [t1, r1, t2]
+
+        const view = renderCard(makeGroup({ tools: [t1, t2], items }))
+        const groupToggle = within(view.container).getByRole('button', { name: /ran 1 command · read 1 file/i })
 
         expect(view.container.querySelector('.pw-plus[data-state="closed"]')).toBeInTheDocument()
         fireEvent.click(groupToggle)
         expect(groupToggle).toHaveAttribute('aria-expanded', 'true')
-        expect(view.container.querySelector('.pw-plus[data-state="open"]')).toBeInTheDocument()
-        expect(screen.getByText('Run 1 · Read 1')).toBeInTheDocument()
-        expect(screen.queryByText('2 actions')).not.toBeInTheDocument()
         expect(screen.getByText('src/a.ts')).toBeInTheDocument()
-        expect(screen.getByText('bun test')).toBeInTheDocument()
+        expect(screen.getByText('Inspecting imports')).toBeInTheDocument()
+        expect(screen.queryByText('Detailed reasoning body here.')).not.toBeInTheDocument()
 
-        const firstRowButton = within(view.container)
+        // Clicking the inline reasoning row expands its markdown body in place.
+        fireEvent.click(screen.getByRole('button', { name: /reasoning.*inspecting imports/i }))
+        expect(screen.getByText('Detailed reasoning body here.')).toBeInTheDocument()
+
+        // Clicking a tool row opens the detail dialog.
+        const firstToolButton = within(view.container)
             .getAllByRole('button')
-            .find((button) => button !== groupToggle)
-
-        expect(firstRowButton).toBeDefined()
-        fireEvent.click(firstRowButton!)
+            .find((button) => button.textContent?.includes('src/a.ts'))
+        expect(firstToolButton).toBeDefined()
+        fireEvent.click(firstToolButton!)
 
         await waitFor(() => {
             expect(screen.getByRole('dialog')).toBeInTheDocument()
         })
         const dialog = screen.getByRole('dialog')
-        expect(screen.getAllByText('src/a.ts')[0]).toBeInTheDocument()
         expect(within(dialog).getAllByText('Input').length).toBeGreaterThan(0)
         expect(within(dialog).getAllByText('Result').length).toBeGreaterThan(0)
         expect(within(dialog).getByRole('heading').parentElement).toHaveClass('text-left')
         expect(within(dialog).getByRole('button', { name: 'Close' })).toHaveClass('top-2')
     })
 
-    it('shows structured Codex exploration actions by default without a generic action count', () => {
+    it('renders structured Codex exploration rows inside expanded groups', () => {
         const tools = [
             makeToolBlock('codex-read', 'CodexBash', {
                 command: 'cat package.json',
@@ -240,68 +295,40 @@ describe('ToolGroupCard', () => {
                     query: 'nativeTitle',
                     path: 'web/src'
                 }]
+            }),
+            makeToolBlock('codex-git', 'CodexBash', {
+                command: 'git log -n 3',
+                command_actions: [{ type: 'unknown', command: 'git log -n 3' }]
             })
         ]
-        const view = renderCard(makeGroup({
-            tools,
-            defaultOpen: true,
-            presentationMode: 'codex-exploration',
-            summary: {
-                totalTools: 2,
-                countsByKind: { read: 0, search: 0, command: 2, mutation: 0, web: 0, other: 0 },
-                fileTargets: [],
-                commandTargets: ['cat package.json', 'rg nativeTitle web/src'],
-                searchTargets: [],
-                urlTargets: [],
-                otherTargets: [],
-                errorCount: 0,
-                runningCount: 0,
-                pendingCount: 0,
-            }
-        }))
+        const view = renderCard(makeGroup({ tools, defaultOpen: true }))
 
-        expect(within(view.container).getByRole('button', { name: /^explored\b/i })).toHaveAttribute('aria-expanded', 'true')
+        expect(within(view.container).getByRole('button', { name: /ran 1 command · read 1 file · searched 1 time/i }))
+            .toHaveAttribute('aria-expanded', 'true')
         expect(screen.getByText('Read')).toBeInTheDocument()
         expect(screen.getByText('package.json')).toBeInTheDocument()
         expect(screen.getByText('Search')).toBeInTheDocument()
         expect(screen.getByText('nativeTitle in web/src')).toBeInTheDocument()
-        expect(screen.queryByText('2 actions')).not.toBeInTheDocument()
     })
 
-    it('uses a neutral header for all-generic tool groups without duplicate counters', () => {
-        const tools = Array.from({ length: 25 }, (_, index) => makeToolBlock(`tool-${index + 1}`, 'Tool', { name: `Tool ${index + 1}` }))
-        const view = renderCard(makeGroup({
-            tools,
-            summary: {
-                totalTools: tools.length,
-                countsByKind: {
-                    read: 0,
-                    search: 0,
-                    command: 0,
-                    mutation: 0,
-                    web: 0,
-                    other: tools.length,
-                },
-                fileTargets: [],
-                commandTargets: [],
-                searchTargets: [],
-                urlTargets: [],
-                otherTargets: tools.map((tool) => tool.tool.name),
-                errorCount: 0,
-                runningCount: 0,
-                pendingCount: 0,
-            },
-        }))
+    it('windows very long groups with Show earlier and a bottom Collapse control', () => {
+        const tools = Array.from({ length: 20 }, (_, index) => (
+            makeToolBlock(`tool-${index + 1}`, 'Bash', { command: `echo step-${index + 1}` })
+        ))
+        renderCard(makeGroup({ tools }))
 
-        expect(screen.getByRole('button', { name: /tool activity/i })).toBeInTheDocument()
-        expect(screen.getByText('25 actions')).toBeInTheDocument()
-        expect(screen.queryByText('Use tool +24')).not.toBeInTheDocument()
-        expect(screen.queryByText('Tool 25')).not.toBeInTheDocument()
+        const headerToggle = screen.getByRole('button', { name: /ran 20 commands/i })
+        fireEvent.click(headerToggle)
 
-        fireEvent.click(within(view.container).getByRole('button', { name: /tool activity/i }))
+        expect(screen.getByRole('button', { name: 'Show 5 earlier' })).toBeInTheDocument()
+        expect(screen.queryByText('echo step-1')).not.toBeInTheDocument()
+        expect(screen.getByText('echo step-20')).toBeInTheDocument()
 
-        expect(screen.getAllByText('Tool').length).toBeGreaterThan(0)
-        expect(screen.getByText('Tool 1')).toBeInTheDocument()
+        fireEvent.click(screen.getByRole('button', { name: 'Show 5 earlier' }))
+        expect(screen.getByText('echo step-1')).toBeInTheDocument()
+
+        fireEvent.click(screen.getByRole('button', { name: 'Collapse' }))
+        expect(headerToggle).toHaveAttribute('aria-expanded', 'false')
     })
 
     it('auto-loads older history after expand when the group is incomplete', async () => {
@@ -342,7 +369,7 @@ describe('ToolGroupCard', () => {
         }
 
         const view = render(<Harness />)
-        const groupToggle = within(view.container).getByRole('button', { name: /inspect a\.ts/i })
+        const groupToggle = within(view.container).getByRole('button', { name: /ran 2 commands/i })
 
         fireEvent.click(groupToggle)
 
@@ -402,7 +429,7 @@ describe('ToolGroupCard', () => {
         }
 
         const view = render(<Harness />)
-        fireEvent.click(within(view.container).getByRole('button', { name: /inspect a\.ts/i }))
+        fireEvent.click(within(view.container).getByRole('button', { name: /ran 2 commands/i }))
 
         await waitFor(() => {
             expect(loadOlder).toHaveBeenCalledTimes(1)
@@ -471,7 +498,7 @@ describe('ToolGroupCard', () => {
         }
 
         const view = render(<Harness />)
-        const groupToggle = within(view.container).getByRole('button', { name: /inspect a\.ts/i })
+        const groupToggle = within(view.container).getByRole('button', { name: /ran 2 commands/i })
 
         fireEvent.click(groupToggle)
 
@@ -528,7 +555,7 @@ describe('ToolGroupCard', () => {
         }
 
         const view = render(<Harness />)
-        const groupToggle = within(view.container).getByRole('button', { name: /inspect a\.ts/i })
+        const groupToggle = within(view.container).getByRole('button', { name: /ran 2 commands/i })
 
         fireEvent.click(groupToggle)
 
